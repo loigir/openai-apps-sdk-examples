@@ -1,0 +1,234 @@
+/* Pickup Card Styles */
+
+.pickup-card {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 12px;
+  padding: 1.5rem;
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s;
+  position: relative;
+  overflow: hidden;
+}
+
+.pickup-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  background: currentColor;
+}
+
+.pickup-card.status-blue {
+  color: #3b82f6;
+}
+
+.pickup-card.status-green {
+  color: #10b981;
+}
+
+.pickup-card.status-yellow {
+  color: #f59e0b;
+}
+
+.pickup-card.status-orange {
+  color: #f97316;
+}
+
+.pickup-card.status-red {
+  color: #ef4444;
+}
+
+.pickup-card.status-gray {
+  color: #6b7280;
+  opacity: 0.6;
+}
+
+.pickup-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Timeline View Specific */
+.view-timeline .pickup-card {
+  position: relative;
+}
+
+.view-timeline .pickup-card::after {
+  content: "";
+  position: absolute;
+  left: -2.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: currentColor;
+  border: 3px solid rgba(255, 255, 255, 0.9);
+}
+
+/* Time Badge */
+.pickup-time-badge {
+  flex-shrink: 0;
+  text-align: center;
+  padding: 0.75rem;
+  background: linear-gradient(135deg, currentColor, currentColor);
+  color: white;
+  border-radius: 8px;
+  min-width: 100px;
+}
+
+.scheduled-time {
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.time-until {
+  font-size: 0.875rem;
+  opacity: 0.9;
+  margin-top: 0.25rem;
+}
+
+/* Details */
+.pickup-details {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  color: #1f2937;
+}
+
+.child-info {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.child-name {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.child-grade {
+  font-size: 0.875rem;
+  color: #6b7280;
+  padding: 0.125rem 0.5rem;
+  background: #f3f4f6;
+  border-radius: 4px;
+}
+
+.pickup-person-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #4b5563;
+}
+
+.person-icon {
+  font-size: 1.25rem;
+}
+
+.person-name {
+  font-size: 1rem;
+}
+
+.eta-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  background: #fef3c7;
+  border-radius: 6px;
+  color: #92400e;
+  font-size: 0.875rem;
+}
+
+.eta-icon {
+  font-size: 1rem;
+}
+
+.delay-badge {
+  margin-left: auto;
+  padding: 0.125rem 0.5rem;
+  background: #fca5a5;
+  color: #991b1b;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.pickup-notes {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  background: #f3f4f6;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  color: #4b5563;
+}
+
+.notes-icon {
+  flex-shrink: 0;
+}
+
+/* Status */
+.pickup-status {
+  flex-shrink: 0;
+}
+
+.status-badge {
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.status-badge.pending {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.status-badge.in_progress {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status-badge.completed {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.status-badge.cancelled {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+/* Grid View Specific */
+.view-grid .pickup-card {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.view-grid .pickup-time-badge {
+  width: 100%;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .pickup-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pickup-time-badge {
+    width: 100%;
+  }
+}

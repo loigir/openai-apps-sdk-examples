@@ -1,0 +1,291 @@
+═══════════════════════════════════════════════════════════════
+AllôBye Database Schema - Entity Relationship Diagram
+═══════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────┐
+│                      CORE ENTITIES                          │
+└─────────────────────────────────────────────────────────────┘
+
+┌──────────────────┐
+│     SCHOOLS      │
+├──────────────────┤
+│ • id (PK)        │
+│ • name           │◄──────────┐
+│ • address        │           │
+│ • phone          │           │
+│ • email          │           │ One-to-Many
+│ • timezone       │           │
+│ • created_at     │           │
+│ • updated_at     │           │
+└──────────────────┘           │
+                               │
+                               │
+┌──────────────────┐           │
+│    CHILDREN      │           │
+├──────────────────┤           │
+│ • id (PK)        │───────────┘
+│ • name           │
+│ • school_id (FK) │◄──────────┐
+│ • grade          │           │
+│ • parent_email   │           │
+│ • parent_name    │           │ Many-to-Many via
+│ • parent_phone   │           │ pickup_children
+│ • medical_info   │           │
+│ • created_at     │           │
+│ • updated_at     │           │
+└──────────────────┘           │
+        ▲                      │
+        │                      │
+        │ Many-to-Many         │
+        │ via                  │
+        │ delegate_children    │
+        │                      │
+        │                      │
+┌──────────────────┐           │
+│   DELEGATES      │           │
+├──────────────────┤           │
+│ • id (PK)        │◄──────────┼──────────┐
+│ • email (UNIQUE) │           │          │
+│ • name           │           │          │
+│ • phone          │           │          │ Many-to-One
+│ • permissions[]  │           │          │
+│ • is_active      │           │          │
+│ • created_at     │           │          │
+│ • updated_at     │           │          │
+└──────────────────┘           │          │
+                               │          │
+                               │          │
+┌──────────────────┐           │          │
+│     PICKUPS      │           │          │
+├──────────────────┤           │          │
+│ • id (PK)        │───────────┘          │
+│ • pickup_person_id (FK) ────────────────┘
+│ • scheduled_time │
+│ • actual_time    │
+│ • status         │ (pending, confirmed, in_progress,
+│ • notes          │  completed, cancelled, late)
+│ • eta_minutes    │
+│ • delay_minutes  │
+│ • cancellation_reason
+│ • created_at     │
+│ • updated_at     │
+└──────────────────┘
+        ▲
+        │
+        │ One-to-Many
+        │
+        │
+┌──────────────────┐
+│  EMERGENCIES     │
+├──────────────────┤
+│ • id (PK)        │
+│ • child_id (FK) ─┼────► CHILDREN
+│ • emergency_type │ (late, illness, cancel, injury, other)
+│ • context        │
+│ • severity       │ (low, medium, high, critical)
+│ • resolved       │
+│ • resolved_at    │
+│ • notified_delegates[]
+│ • notified_schools[]
+│ • created_at     │
+│ • updated_at     │
+└──────────────────┘
+
+
+┌─────────────────────────────────────────────────────────────┐
+│                   JUNCTION TABLES                           │
+└─────────────────────────────────────────────────────────────┘
+
+┌────────────────────────┐
+│   PICKUP_CHILDREN      │  Links pickups to children
+├────────────────────────┤  (one pickup can have multiple children)
+│ • pickup_id (PK, FK) ──┼────► PICKUPS
+│ • child_id (PK, FK) ───┼────► CHILDREN
+│ • checked_out          │
+│ • checked_out_at       │
+│ • checked_out_by       │
+└────────────────────────┘
+
+┌────────────────────────┐
+│  DELEGATE_CHILDREN     │  Authorization: delegates → children
+├────────────────────────┤  (who can pick up whom)
+│ • delegate_id (PK, FK)─┼────► DELEGATES
+│ • child_id (PK, FK) ───┼────► CHILDREN
+│ • authorized_at        │
+│ • authorized_by        │
+│ • expires_at           │
+│ • is_active            │
+└────────────────────────┘
+
+
+┌─────────────────────────────────────────────────────────────┐
+│                     KEY RELATIONSHIPS                       │
+└─────────────────────────────────────────────────────────────┘
+
+1. SCHOOLS → CHILDREN
+   One school has many children
+
+2. CHILDREN ←→ DELEGATES (via delegate_children)
+   Many-to-many authorization relationship
+
+3. DELEGATES → PICKUPS
+   One delegate can have many pickups
+
+4. PICKUPS ←→ CHILDREN (via pickup_children)
+   One pickup can involve multiple children
+   One child can have multiple pickups
+
+5. CHILDREN → EMERGENCIES
+   One child can have many emergencies
+
+
+┌─────────────────────────────────────────────────────────────┐
+│                      INDEXES                                │
+└─────────────────────────────────────────────────────────────┘
+
+SCHOOLS:
+  • idx_schools_name ON name
+
+CHILDREN:
+  • idx_children_school_id ON school_id
+  • idx_children_parent_email ON parent_email
+
+DELEGATES:
+  • idx_delegates_email ON email
+  • idx_delegates_is_active ON is_active
+
+PICKUPS:
+  • idx_pickups_scheduled_time ON scheduled_time
+  • idx_pickups_status ON status
+  • idx_pickups_pickup_person_id ON pickup_person_id
+  • idx_pickups_status_scheduled_time ON (status, scheduled_time)
+
+PICKUP_CHILDREN:
+  • idx_pickup_children_child_id ON child_id
+  • idx_pickup_children_checked_out ON checked_out
+
+DELEGATE_CHILDREN:
+  • idx_delegate_children_child_id ON child_id
+  • idx_delegate_children_is_active ON is_active
+
+EMERGENCIES:
+  • idx_emergencies_child_id ON child_id
+  • idx_emergencies_created_at ON created_at
+  • idx_emergencies_resolved ON resolved
+  • idx_emergencies_type_resolved ON (emergency_type, resolved)
+
+
+┌─────────────────────────────────────────────────────────────┐
+│                        TRIGGERS                             │
+└─────────────────────────────────────────────────────────────┘
+
+1. AUTO-UPDATE updated_at
+   ├─ update_schools_updated_at
+   ├─ update_children_updated_at
+   ├─ update_delegates_updated_at
+   ├─ update_pickups_updated_at
+   └─ update_emergencies_updated_at
+
+2. EMERGENCY NOTIFICATION
+   └─ emergency_notification
+      Sends pg_notify when emergency created
+
+3. PICKUP STATUS CASCADE
+   └─ pickup_status_cascade
+      Auto-updates children when pickup status changes:
+      • cancelled → uncheck all children
+      • completed → check out unchecked children
+
+
+┌─────────────────────────────────────────────────────────────┐
+│                    ROW LEVEL SECURITY                       │
+└─────────────────────────────────────────────────────────────┘
+
+ALL TABLES HAVE RLS ENABLED
+
+Access Patterns:
+  ┌─────────────┬──────────┬─────────┬───────────┬──────────┐
+  │ Role        │ Children │ Pickups │Emergency  │ Schools  │
+  ├─────────────┼──────────┼─────────┼───────────┼──────────┤
+  │ Parents     │ Own kids │ Own kids│ Own kids  │ All      │
+  │ School Staff│ School   │ School  │ School    │ All      │
+  │ Delegates   │ Auth'd   │ Assigned│ Auth'd    │ All      │
+  │ Service Role│ All      │ All     │ All       │ All      │
+  └─────────────┴──────────┴─────────┴───────────┴──────────┘
+
+
+┌─────────────────────────────────────────────────────────────┐
+│                     REAL-TIME TABLES                        │
+└─────────────────────────────────────────────────────────────┘
+
+Tables enabled for Supabase real-time subscriptions:
+  • pickups
+  • emergencies
+  • pickup_children
+
+
+┌─────────────────────────────────────────────────────────────┐
+│                   UTILITY FUNCTIONS                         │
+└─────────────────────────────────────────────────────────────┘
+
+get_upcoming_pickups(school_id UUID, hours_ahead INTEGER)
+  Returns upcoming pickups for a school
+
+get_active_emergencies(school_id UUID)
+  Returns unresolved emergencies for a school
+
+
+┌─────────────────────────────────────────────────────────────┐
+│                      SAMPLE FLOW                            │
+└─────────────────────────────────────────────────────────────┘
+
+1. Parent schedules pickup:
+   ┌─────────────┐
+   │ Create      │
+   │ PICKUP      │
+   └──────┬──────┘
+          │
+          ▼
+   ┌─────────────────────┐
+   │ Link children via   │
+   │ PICKUP_CHILDREN     │
+   └─────────────────────┘
+
+2. Delegate is running late:
+   ┌─────────────┐
+   │ Create      │
+   │ EMERGENCY   │
+   └──────┬──────┘
+          │
+          ▼
+   ┌─────────────────────┐
+   │ Trigger sends       │
+   │ pg_notify           │
+   └──────┬──────────────┘
+          │
+          ▼
+   ┌─────────────────────┐
+   │ School dashboard    │
+   │ receives real-time  │
+   │ update              │
+   └─────────────────────┘
+
+3. Child is picked up:
+   ┌─────────────┐
+   │ Update      │
+   │ PICKUP      │
+   │ status =    │
+   │ 'completed' │
+   └──────┬──────┘
+          │
+          ▼
+   ┌─────────────────────┐
+   │ Trigger auto-checks │
+   │ out children in     │
+   │ PICKUP_CHILDREN     │
+   └─────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════
+End of Schema Diagram
+═══════════════════════════════════════════════════════════════
