@@ -1,16 +1,23 @@
-import React from 'react';
+import React, { memo, useMemo } from 'react';
+
+// Helper function moved outside component
+const getLatencyColor = (latency) => {
+  if (latency > 1000) return '#ef4444';
+  if (latency > 500) return '#f59e0b';
+  return '#10b981';
+};
 
 /**
  * Tool Usage Bar Chart Component
  * Displays tool call counts and average latency as horizontal bars
  */
-export const ToolUsageChart = ({ tools }) => {
+export const ToolUsageChart = memo(function ToolUsageChart({ tools }) {
   if (!tools || tools.length === 0) {
     return <p className="no-data">No tool usage data available</p>;
   }
 
-  const maxCallCount = Math.max(...tools.map(t => t.call_count));
-  const maxLatency = Math.max(...tools.map(t => t.avg_latency_ms));
+  const maxCallCount = useMemo(() => Math.max(...tools.map(t => t.call_count)), [tools]);
+  const maxLatency = useMemo(() => Math.max(...tools.map(t => t.avg_latency_ms)), [tools]);
 
   return (
     <div className="tool-usage-chart">
@@ -19,14 +26,13 @@ export const ToolUsageChart = ({ tools }) => {
         <div className="chart-title">Avg Latency (ms)</div>
       </div>
 
-      {tools.map((tool, index) => {
+      {tools.map((tool) => {
         const callBarWidth = (tool.call_count / maxCallCount) * 100;
         const latencyBarWidth = (tool.avg_latency_ms / maxLatency) * 100;
-        const latencyColor = tool.avg_latency_ms > 1000 ? '#ef4444' :
-                            tool.avg_latency_ms > 500 ? '#f59e0b' : '#10b981';
+        const latencyColor = getLatencyColor(tool.avg_latency_ms);
 
         return (
-          <div key={index} className="chart-row">
+          <div key={tool.name} className="chart-row">
             <div className="tool-name">{tool.name}</div>
 
             <div className="bar-container">
@@ -60,4 +66,4 @@ export const ToolUsageChart = ({ tools }) => {
       })}
     </div>
   );
-};
+});

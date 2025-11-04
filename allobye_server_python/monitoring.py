@@ -20,8 +20,11 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Generator, Iterator, List, Optional, TypeVar, Union, cast
 from uuid import uuid4
+
+# Type variable for generic decorators
+F = TypeVar('F', bound=Callable[..., Any])
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -53,7 +56,7 @@ class MonitoringConfig:
 _config = MonitoringConfig()
 
 
-def configure_monitoring(**kwargs) -> MonitoringConfig:
+def configure_monitoring(**kwargs: Any) -> MonitoringConfig:
     """Update global monitoring configuration."""
     global _config
     for key, value in kwargs.items():
@@ -80,15 +83,15 @@ class StructuredLogger:
         handler.setFormatter(JsonFormatter())
         self.logger.handlers = [handler]
 
-    def set_context(self, **context):
+    def set_context(self, **context: Any) -> None:
         """Set request-level context fields."""
         self._request_context.update(context)
 
-    def clear_context(self):
+    def clear_context(self) -> None:
         """Clear request context."""
         self._request_context = {}
 
-    def _format_log(self, level: str, message: str, **extra) -> Dict[str, Any]:
+    def _format_log(self, level: str, message: str, **extra: Any) -> Dict[str, Any]:
         """Format log entry as structured JSON."""
         log_entry = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
@@ -101,27 +104,27 @@ class StructuredLogger:
         }
         return log_entry
 
-    def debug(self, message: str, **extra):
+    def debug(self, message: str, **extra: Any) -> None:
         """Log debug message."""
         log_data = self._format_log("DEBUG", message, **extra)
         self.logger.debug(json.dumps(log_data))
 
-    def info(self, message: str, **extra):
+    def info(self, message: str, **extra: Any) -> None:
         """Log info message."""
         log_data = self._format_log("INFO", message, **extra)
         self.logger.info(json.dumps(log_data))
 
-    def warning(self, message: str, **extra):
+    def warning(self, message: str, **extra: Any) -> None:
         """Log warning message."""
         log_data = self._format_log("WARNING", message, **extra)
         self.logger.warning(json.dumps(log_data))
 
-    def error(self, message: str, **extra):
+    def error(self, message: str, **extra: Any) -> None:
         """Log error message."""
         log_data = self._format_log("ERROR", message, **extra)
         self.logger.error(json.dumps(log_data))
 
-    def critical(self, message: str, **extra):
+    def critical(self, message: str, **extra: Any) -> None:
         """Log critical message."""
         log_data = self._format_log("CRITICAL", message, **extra)
         self.logger.critical(json.dumps(log_data))
@@ -205,6 +208,28 @@ class DatabaseMetrics:
         return self.error_count / self.query_count
 
 
+@dataclass
+class CacheMetrics:
+    """Metrics for cache operations."""
+    hits: int = 0
+    misses: int = 0
+    sets: int = 0
+    invalidations: int = 0
+
+    @property
+    def hit_rate(self) -> float:
+        """Calculate cache hit rate."""
+        total = self.hits + self.misses
+        if total == 0:
+            return 0.0
+        return self.hits / total
+
+    @property
+    def total_requests(self) -> int:
+        """Total cache requests (hits + misses)."""
+        return self.hits + self.misses
+
+
 class MetricsCollector:
     """Collects and aggregates metrics."""
 
@@ -213,13 +238,14 @@ class MetricsCollector:
         self.start_time = time.time()
         self.tool_metrics: Dict[str, ToolMetrics] = defaultdict(ToolMetrics)
         self.db_metrics = DatabaseMetrics()
+        self.cache_metrics = CacheMetrics()
         self.active_connections = 0
         self.total_requests = 0
         self.recent_errors: List[Dict[str, Any]] = []
         self.recent_requests: List[Dict[str, Any]] = []
         self._alerts: List[Dict[str, Any]] = []
 
-    def record_tool_call(self, tool_name: str, latency_ms: float, success: bool, error: Optional[str] = None):
+    def record_tool_call(self, tool_name: str, latency_ms: float, success: bool, error: Optional[str] = None) -> None:
         """Record a tool call."""
         metrics = self.tool_metrics[tool_name]
         metrics.call_count += 1
@@ -262,7 +288,7 @@ class MetricsCollector:
         # Check alerting rules
         self._check_tool_alerts(tool_name, metrics, latency_ms)
 
-    def record_db_query(self, latency_ms: float, success: bool, error: Optional[str] = None):
+    def record_db_query(self, latency_ms: float, success: bool, error: Optional[str] = None) -> None:
         """Record a database query."""
         self.db_metrics.query_count += 1
         self.db_metrics.total_latency_ms += latency_ms
@@ -277,15 +303,30 @@ class MetricsCollector:
             # Check database alerting rules
             self._check_db_alerts(error)
 
-    def increment_connections(self):
+    def record_cache_operation(self, operation: str) -> None:
+        """Record a cache operation.
+
+        Args:
+            operation: Type of operation - 'hit', 'miss', 'set', 'invalidate'
+        """
+        if operation == "hit":
+            self.cache_metrics.hits += 1
+        elif operation == "miss":
+            self.cache_metrics.misses += 1
+        elif operation == "set":
+            self.cache_metrics.sets += 1
+        elif operation == "invalidate":
+            self.cache_metrics.invalidations += 1
+
+    def increment_connections(self) -> None:
         """Increment active connections."""
         self.active_connections += 1
 
-    def decrement_connections(self):
+    def decrement_connections(self) -> None:
         """Decrement active connections."""
         self.active_connections = max(0, self.active_connections - 1)
 
-    def increment_requests(self):
+    def increment_requests(self) -> None:
         """Increment total requests."""
         self.total_requests += 1
 
@@ -322,13 +363,14 @@ class MetricsCollector:
             }
             for name, metrics in self.tool_metrics.items()
         ]
-        return sorted(tools, key=lambda x: x["call_count"], reverse=True)[:limit]
+        # Sort by call_count (cast to int for type safety)
+        return sorted(tools, key=lambda x: cast(int, x["call_count"]), reverse=True)[:limit]
 
     def get_alerts(self) -> List[Dict[str, Any]]:
         """Get recent alerts."""
         return self._alerts[-50:]  # Last 50 alerts
 
-    def _check_tool_alerts(self, tool_name: str, metrics: ToolMetrics, latency_ms: float):
+    def _check_tool_alerts(self, tool_name: str, metrics: ToolMetrics, latency_ms: float) -> None:
         """Check and trigger tool-related alerts."""
         if not self.config.alerting.enable_alerts:
             return
@@ -355,7 +397,7 @@ class MetricsCollector:
                 latency_ms=latency_ms,
             )
 
-    def _check_db_alerts(self, error: Optional[str]):
+    def _check_db_alerts(self, error: Optional[str]) -> None:
         """Check and trigger database-related alerts."""
         if not self.config.alerting.enable_alerts:
             return
@@ -370,7 +412,7 @@ class MetricsCollector:
                 error=error,
             )
 
-    def _add_alert(self, alert_type: str, message: str, severity: str, **extra):
+    def _add_alert(self, alert_type: str, message: str, severity: str, **extra: Any) -> None:
         """Add an alert to the queue."""
         alert = {
             "timestamp": datetime.utcnow().isoformat(),
@@ -462,6 +504,14 @@ class MetricsCollector:
                 "error_rate": self.db_metrics.error_rate,
                 "consecutive_failures": self.db_metrics.consecutive_failures,
             },
+            "cache": {
+                "hits": self.cache_metrics.hits,
+                "misses": self.cache_metrics.misses,
+                "sets": self.cache_metrics.sets,
+                "invalidations": self.cache_metrics.invalidations,
+                "hit_rate": self.cache_metrics.hit_rate,
+                "total_requests": self.cache_metrics.total_requests,
+            },
             "tool_details": {
                 name: {
                     "call_count": metrics.call_count,
@@ -504,7 +554,7 @@ class RequestTracer:
 
         return trace_id
 
-    def add_span(self, trace_id: str, span_name: str, **metadata):
+    def add_span(self, trace_id: str, span_name: str, **metadata: Any) -> None:
         """Add a span to the trace."""
         if trace_id not in self._active_traces:
             return
@@ -516,13 +566,13 @@ class RequestTracer:
         }
         self._active_traces[trace_id]["spans"].append(span)
 
-    def end_trace(self, trace_id: str, success: bool, error: Optional[str] = None):
+    def end_trace(self, trace_id: str, success: bool, error: Optional[str] = None) -> Optional[float]:
         """End a trace."""
         if trace_id not in self._active_traces:
-            return
+            return None
 
         trace = self._active_traces[trace_id]
-        duration_ms = (time.time() - trace["start_time"]) * 1000
+        duration_ms: float = (time.time() - float(trace["start_time"])) * 1000
 
         self.logger.debug(
             "Request trace completed",
@@ -540,7 +590,7 @@ class RequestTracer:
         return duration_ms
 
     @contextmanager
-    def trace_span(self, trace_id: str, span_name: str, **metadata):
+    def trace_span(self, trace_id: str, span_name: str, **metadata: Any) -> Generator[None, None, None]:
         """Context manager for tracing a span."""
         start_time = time.time()
         try:
@@ -562,18 +612,18 @@ class MonitoringMiddleware:
         self.metrics = metrics
         self.tracer = tracer
 
-    def monitor_tool_call(self, func: Callable) -> Callable:
+    def monitor_tool_call(self, func: Callable[..., Any]) -> Callable[..., Any]:
         """Decorator to monitor tool calls."""
 
         @wraps(func)
-        async def wrapper(tool_name: str, arguments: Dict[str, Any], *args, **kwargs):
+        async def wrapper(tool_name: str, arguments: Dict[str, Any], *args: Any, **kwargs: Any) -> Any:
             # Start trace
             trace_id = self.tracer.start_trace(tool_name)
             self.metrics.increment_requests()
             self.metrics.increment_connections()
 
             start_time = time.time()
-            error = None
+            error: Optional[str] = None
             success = False
 
             try:
@@ -618,10 +668,10 @@ class MonitoringMiddleware:
         return wrapper
 
     @contextmanager
-    def monitor_db_query(self, query_type: str):
+    def monitor_db_query(self, query_type: str) -> Generator[None, None, None]:
         """Context manager for monitoring database queries."""
         start_time = time.time()
-        error = None
+        error: Optional[str] = None
         success = False
 
         try:
@@ -682,6 +732,7 @@ def get_logger() -> StructuredLogger:
     global _logger
     if _logger is None:
         initialize_monitoring()
+    assert _logger is not None, "Logger initialization failed"
     return _logger
 
 
@@ -690,6 +741,7 @@ def get_metrics() -> MetricsCollector:
     global _metrics
     if _metrics is None:
         initialize_monitoring()
+    assert _metrics is not None, "Metrics initialization failed"
     return _metrics
 
 
@@ -698,6 +750,7 @@ def get_tracer() -> RequestTracer:
     global _tracer
     if _tracer is None:
         initialize_monitoring()
+    assert _tracer is not None, "Tracer initialization failed"
     return _tracer
 
 
@@ -706,6 +759,7 @@ def get_middleware() -> MonitoringMiddleware:
     global _middleware
     if _middleware is None:
         initialize_monitoring()
+    assert _middleware is not None, "Middleware initialization failed"
     return _middleware
 
 

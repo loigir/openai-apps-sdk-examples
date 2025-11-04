@@ -1,28 +1,33 @@
-import React from 'react';
+import React, { memo, useMemo } from 'react';
+
+// Constants moved outside component
+const statusColors = {
+  healthy: '#10b981',
+  degraded: '#f59e0b',
+  unhealthy: '#ef4444',
+};
+
+const statusLabels = {
+  healthy: 'Healthy',
+  degraded: 'Degraded',
+  unhealthy: 'Unhealthy',
+};
+
+const getHealthStatus = (errorRate, avgLatency) => {
+  if (errorRate > 0.05) return 'unhealthy';
+  if (errorRate > 0.02 || avgLatency > 1000) return 'degraded';
+  return 'healthy';
+};
 
 /**
  * System Health Status Component
  * Displays overall system health with color-coded indicators
  */
-export const SystemHealth = ({ data }) => {
-  const getHealthStatus = () => {
-    if (data.overall_error_rate > 0.05) return 'unhealthy';
-    if (data.overall_error_rate > 0.02 || data.overall_avg_latency_ms > 1000) return 'degraded';
-    return 'healthy';
-  };
-
-  const status = getHealthStatus();
-  const statusColors = {
-    healthy: '#10b981',
-    degraded: '#f59e0b',
-    unhealthy: '#ef4444',
-  };
-
-  const statusLabels = {
-    healthy: 'Healthy',
-    degraded: 'Degraded',
-    unhealthy: 'Unhealthy',
-  };
+export const SystemHealth = memo(function SystemHealth({ data }) {
+  const status = useMemo(
+    () => getHealthStatus(data.overall_error_rate, data.overall_avg_latency_ms),
+    [data.overall_error_rate, data.overall_avg_latency_ms]
+  );
 
   return (
     <section className="system-health">
@@ -44,4 +49,4 @@ export const SystemHealth = ({ data }) => {
       </div>
     </section>
   );
-};
+});

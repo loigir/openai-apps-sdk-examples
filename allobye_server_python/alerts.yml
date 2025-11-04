@@ -1,0 +1,459 @@
+# AllôBye MCP Server - Alerting Rules Configuration
+#
+# This file defines alerting thresholds and response procedures for the
+# AllôBye monitoring system. Alerts are triggered automatically based on
+# these rules and logged to the monitoring dashboard.
+
+version: "1.0"
+service: "allobye-mcp-server"
+
+# ═══════════════════════════════════════════════════════════════
+# GLOBAL ALERT CONFIGURATION
+# ═══════════════════════════════════════════════════════════════
+
+global:
+  # Default severity levels: info, warning, error, critical
+  default_severity: warning
+
+  # Alert aggregation window (seconds) - prevents alert spam
+  aggregation_window: 300  # 5 minutes
+
+  # Maximum alerts per aggregation window
+  max_alerts_per_window: 10
+
+  # Enable/disable all alerting
+  enabled: true
+
+  # Alert destinations (where to send alerts)
+  destinations:
+    - type: log
+      enabled: true
+    - type: prometheus
+      enabled: true
+    # Future: email, slack, pagerduty, etc.
+    # - type: email
+    #   enabled: false
+    #   recipients: ["ops@allobye.ca"]
+    # - type: slack
+    #   enabled: false
+    #   webhook_url: "https://hooks.slack.com/services/..."
+
+# ═══════════════════════════════════════════════════════════════
+# SYSTEM-LEVEL ALERTS
+# ═══════════════════════════════════════════════════════════════
+
+alerts:
+  # -------------------------------
+  # API Performance Alerts
+  # -------------------------------
+
+  - name: high_error_rate
+    description: "Overall API error rate exceeds threshold"
+    severity: warning
+    condition:
+      metric: error_rate
+      operator: greater_than
+      threshold: 0.05  # 5%
+      duration: 300  # Must persist for 5 minutes
+    labels:
+      category: performance
+      impact: medium
+    response_procedure: |
+      1. Check recent error logs in monitoring dashboard
+      2. Identify failing tools and error patterns
+      3. Check database connectivity and Supabase status
+      4. Review recent deployments or configuration changes
+      5. Scale up resources if needed
+    runbook_url: "https://docs.allobye.ca/runbooks/high-error-rate"
+
+  - name: critical_error_rate
+    description: "Critical error rate indicating system failure"
+    severity: critical
+    condition:
+      metric: error_rate
+      operator: greater_than
+      threshold: 0.20  # 20%
+      duration: 60  # Must persist for 1 minute
+    labels:
+      category: availability
+      impact: critical
+    response_procedure: |
+      IMMEDIATE ACTION REQUIRED:
+      1. Check system health endpoint (/health)
+      2. Verify database connectivity
+      3. Check Supabase API status
+      4. Review error logs for cascading failures
+      5. Consider triggering failover or rollback
+      6. Escalate to on-call engineer
+    runbook_url: "https://docs.allobye.ca/runbooks/critical-errors"
+
+  - name: high_latency
+    description: "API latency exceeds acceptable threshold"
+    severity: warning
+    condition:
+      metric: avg_latency_ms
+      operator: greater_than
+      threshold: 1000  # 1 second
+      duration: 300  # 5 minutes
+    labels:
+      category: performance
+      impact: medium
+    response_procedure: |
+      1. Check database query performance
+      2. Identify slow tools in monitoring dashboard
+      3. Review database connection pool utilization
+      4. Check for N+1 queries or missing indexes
+      5. Consider query optimization or caching
+    runbook_url: "https://docs.allobye.ca/runbooks/high-latency"
+
+  - name: very_high_latency
+    description: "API latency severely degraded"
+    severity: error
+    condition:
+      metric: avg_latency_ms
+      operator: greater_than
+      threshold: 3000  # 3 seconds
+      duration: 120  # 2 minutes
+    labels:
+      category: performance
+      impact: high
+    response_procedure: |
+      1. Identify bottleneck (database, external API, processing)
+      2. Check database slow query log
+      3. Review database connection pool
+      4. Check Supabase API status and rate limits
+      5. Consider emergency caching or circuit breakers
+      6. Scale database if needed
+    runbook_url: "https://docs.allobye.ca/runbooks/severe-latency"
+
+  # -------------------------------
+  # Database Alerts
+  # -------------------------------
+
+  - name: database_connection_failure
+    description: "Database connectivity issues detected"
+    severity: critical
+    condition:
+      metric: db_consecutive_failures
+      operator: greater_than_or_equal
+      threshold: 3
+    labels:
+      category: database
+      impact: critical
+    response_procedure: |
+      CRITICAL DATABASE ISSUE:
+      1. Verify database server is running
+      2. Check network connectivity to database
+      3. Verify Supabase API status
+      4. Check connection pool exhaustion
+      5. Review database credentials and permissions
+      6. Check database disk space and memory
+      7. Escalate to database admin if unresolved
+    runbook_url: "https://docs.allobye.ca/runbooks/db-connection-failure"
+
+  - name: database_high_error_rate
+    description: "High database query error rate"
+    severity: warning
+    condition:
+      metric: db_error_rate
+      operator: greater_than
+      threshold: 0.10  # 10%
+      duration: 300  # 5 minutes
+    labels:
+      category: database
+      impact: medium
+    response_procedure: |
+      1. Check database error logs
+      2. Identify failing queries
+      3. Verify schema integrity
+      4. Check for constraint violations or data issues
+      5. Review recent migrations
+    runbook_url: "https://docs.allobye.ca/runbooks/db-high-errors"
+
+  - name: slow_queries
+    description: "High number of slow database queries"
+    severity: warning
+    condition:
+      metric: db_slow_query_count
+      operator: greater_than
+      threshold: 10
+      duration: 300  # 5 minutes
+    labels:
+      category: database
+      impact: medium
+    response_procedure: |
+      1. Review slow query log
+      2. Identify queries without proper indexes
+      3. Check for table scans on large tables
+      4. Consider query optimization or index creation
+      5. Review recent data growth
+    runbook_url: "https://docs.allobye.ca/runbooks/slow-queries"
+
+  # -------------------------------
+  # Business Logic Alerts
+  # -------------------------------
+
+  - name: pickup_creation_failure
+    description: "Pickup creation failures exceed threshold"
+    severity: error
+    condition:
+      metric: pickup_schedule_create_error_rate
+      operator: greater_than
+      threshold: 0.15  # 15%
+      duration: 600  # 10 minutes
+    labels:
+      category: business_logic
+      impact: high
+    response_procedure: |
+      BUSINESS IMPACT: Parents cannot schedule pickups
+      1. Check pickup-schedule-create tool errors
+      2. Verify school and child data integrity
+      3. Check delegate authorization issues
+      4. Review A2A coordination failures
+      5. Verify Supabase permissions
+      6. Contact affected schools if widespread
+    runbook_url: "https://docs.allobye.ca/runbooks/pickup-failures"
+
+  - name: emergency_notification_failure
+    description: "Emergency notifications failing to send"
+    severity: critical
+    condition:
+      metric: emergency_declare_error_rate
+      operator: greater_than
+      threshold: 0.05  # 5%
+      duration: 60  # 1 minute
+    labels:
+      category: business_logic
+      impact: critical
+    response_procedure: |
+      CRITICAL: Emergency notifications not reaching recipients
+      1. Verify emergency-declare tool functionality
+      2. Check A2A cascade mechanism
+      3. Verify delegate notification system
+      4. Check email/SMS delivery if applicable
+      5. Manual notification of affected parties may be required
+      6. Escalate immediately
+    runbook_url: "https://docs.allobye.ca/runbooks/emergency-notifications"
+
+  - name: authentication_failure_spike
+    description: "Spike in authentication failures"
+    severity: warning
+    condition:
+      metric: auth_login_error_rate
+      operator: greater_than
+      threshold: 0.30  # 30%
+      duration: 300  # 5 minutes
+    labels:
+      category: security
+      impact: medium
+    response_procedure: |
+      1. Check for potential brute force attack
+      2. Review failed login patterns
+      3. Verify Supabase auth service status
+      4. Check for credential database issues
+      5. Consider rate limiting if attack detected
+      6. Review security logs
+    runbook_url: "https://docs.allobye.ca/runbooks/auth-failures"
+
+  # -------------------------------
+  # Resource Utilization Alerts
+  # -------------------------------
+
+  - name: high_active_connections
+    description: "High number of active connections"
+    severity: warning
+    condition:
+      metric: active_connections
+      operator: greater_than
+      threshold: 100
+      duration: 300  # 5 minutes
+    labels:
+      category: resources
+      impact: medium
+    response_procedure: |
+      1. Check for connection leaks
+      2. Review connection pool configuration
+      3. Identify long-running requests
+      4. Check for DDoS or traffic spike
+      5. Consider scaling horizontally
+    runbook_url: "https://docs.allobye.ca/runbooks/high-connections"
+
+  - name: cache_low_hit_rate
+    description: "Cache hit rate below optimal threshold"
+    severity: info
+    condition:
+      metric: cache_hit_rate
+      operator: less_than
+      threshold: 0.70  # 70%
+      duration: 1800  # 30 minutes
+    labels:
+      category: performance
+      impact: low
+    response_procedure: |
+      1. Review cache key strategies
+      2. Check cache TTL settings
+      3. Analyze cache eviction patterns
+      4. Consider increasing cache size
+      5. Review caching policies
+    runbook_url: "https://docs.allobye.ca/runbooks/cache-performance"
+
+  # -------------------------------
+  # Security Alerts
+  # -------------------------------
+
+  - name: suspicious_error_pattern
+    description: "Potential security issue detected"
+    severity: error
+    condition:
+      metric: xss_validation_errors
+      operator: greater_than
+      threshold: 5
+      duration: 300  # 5 minutes
+    labels:
+      category: security
+      impact: high
+    response_procedure: |
+      SECURITY ALERT: Potential attack detected
+      1. Review validation error logs
+      2. Identify source IPs and patterns
+      3. Check for XSS or injection attempts
+      4. Consider blocking malicious IPs
+      5. Review security headers and CSP
+      6. Escalate to security team
+    runbook_url: "https://docs.allobye.ca/runbooks/security-incident"
+
+# ═══════════════════════════════════════════════════════════════
+# TOOL-SPECIFIC ALERTS
+# ═══════════════════════════════════════════════════════════════
+
+tool_alerts:
+  # Alerts for specific MCP tools
+
+  - tool: pickup-schedule-create
+    alerts:
+      - name: pickup_high_latency
+        description: "Pickup scheduling taking too long"
+        severity: warning
+        condition:
+          metric: avg_latency_ms
+          operator: greater_than
+          threshold: 2000  # 2 seconds
+          duration: 300
+        response_procedure: |
+          1. Check database query performance
+          2. Review cross-school coordination
+          3. Check Supabase API latency
+          4. Optimize pickup creation logic
+
+  - tool: emergency-declare
+    alerts:
+      - name: emergency_critical_latency
+        description: "Emergency declaration too slow"
+        severity: critical
+        condition:
+          metric: avg_latency_ms
+          operator: greater_than
+          threshold: 1000  # 1 second
+          duration: 60
+        response_procedure: |
+          CRITICAL: Emergency notifications delayed
+          1. Check A2A cascade performance
+          2. Verify notification system
+          3. Optimize emergency broadcast
+          4. Consider async processing
+
+  - tool: school-dashboard-fetch
+    alerts:
+      - name: dashboard_fetch_slow
+        description: "School dashboard loading slowly"
+        severity: warning
+        condition:
+          metric: avg_latency_ms
+          operator: greater_than
+          threshold: 1500  # 1.5 seconds
+          duration: 300
+        response_procedure: |
+          1. Check pickup query performance
+          2. Review dashboard data aggregation
+          3. Consider caching dashboard data
+          4. Optimize database indexes
+
+# ═══════════════════════════════════════════════════════════════
+# HEALTH CHECK ALERTS
+# ═══════════════════════════════════════════════════════════════
+
+health_checks:
+  # Health check thresholds and alerts
+
+  - name: overall_health_degraded
+    description: "System health degraded"
+    severity: warning
+    condition:
+      health_status: degraded
+    response_procedure: |
+      1. Check /health endpoint details
+      2. Review component health checks
+      3. Identify degraded components
+      4. Take corrective action per component
+
+  - name: overall_health_unhealthy
+    description: "System health unhealthy"
+    severity: critical
+    condition:
+      health_status: unhealthy
+    response_procedure: |
+      CRITICAL SYSTEM FAILURE:
+      1. Immediately check /health endpoint
+      2. Identify failed components
+      3. Check database, cache, and API health
+      4. Initiate emergency procedures
+      5. Escalate to on-call team
+
+# ═══════════════════════════════════════════════════════════════
+# NOTIFICATION TEMPLATES
+# ═══════════════════════════════════════════════════════════════
+
+notification_templates:
+  # Templates for alert notifications
+
+  default:
+    title: "[{{ severity | upper }}] {{ alert_name }}"
+    body: |
+      Alert: {{ alert_name }}
+      Severity: {{ severity }}
+      Description: {{ description }}
+
+      Condition: {{ condition }}
+      Current Value: {{ current_value }}
+      Threshold: {{ threshold }}
+
+      Time: {{ timestamp }}
+      Service: {{ service }}
+      Environment: {{ environment }}
+
+      Response Procedure:
+      {{ response_procedure }}
+
+      Runbook: {{ runbook_url }}
+
+  critical:
+    title: "🚨 [CRITICAL] {{ alert_name }}"
+    body: |
+      ⚠️  CRITICAL ALERT ⚠️
+
+      Alert: {{ alert_name }}
+      Description: {{ description }}
+
+      IMMEDIATE ACTION REQUIRED
+
+      Current Value: {{ current_value }}
+      Threshold: {{ threshold }}
+      Duration: {{ duration }}s
+
+      Response Procedure:
+      {{ response_procedure }}
+
+      Runbook: {{ runbook_url }}
+
+      Time: {{ timestamp }}
+      Correlation ID: {{ correlation_id }}

@@ -135,19 +135,33 @@ CREATE INDEX idx_pickups_status ON pickups(status);
 CREATE INDEX idx_pickups_pickup_person_id ON pickups(pickup_person_id);
 CREATE INDEX idx_pickups_status_scheduled_time ON pickups(status, scheduled_time);
 
+-- PERFORMANCE OPTIMIZATION: Add composite index for time-range queries
+CREATE INDEX idx_pickups_time_range ON pickups(scheduled_time DESC, status) WHERE status NOT IN ('completed', 'cancelled');
+
 -- Pickup-Children indexes
 CREATE INDEX idx_pickup_children_child_id ON pickup_children(child_id);
 CREATE INDEX idx_pickup_children_checked_out ON pickup_children(checked_out);
+-- PERFORMANCE OPTIMIZATION: Add index on pickup_id for faster joins
+CREATE INDEX idx_pickup_children_pickup_id ON pickup_children(pickup_id);
 
 -- Delegate-Children indexes
 CREATE INDEX idx_delegate_children_child_id ON delegate_children(child_id);
 CREATE INDEX idx_delegate_children_is_active ON delegate_children(is_active);
+-- PERFORMANCE OPTIMIZATION: Add composite index for active delegate lookups
+CREATE INDEX idx_delegate_children_delegate_active ON delegate_children(delegate_id, is_active) WHERE is_active = TRUE;
+-- PERFORMANCE OPTIMIZATION: Add index on delegate_id for reverse lookups
+CREATE INDEX idx_delegate_children_delegate_id ON delegate_children(delegate_id);
 
 -- Emergencies indexes
 CREATE INDEX idx_emergencies_child_id ON emergencies(child_id);
 CREATE INDEX idx_emergencies_created_at ON emergencies(created_at);
 CREATE INDEX idx_emergencies_resolved ON emergencies(resolved);
 CREATE INDEX idx_emergencies_type_resolved ON emergencies(emergency_type, resolved);
+
+-- PERFORMANCE OPTIMIZATION: Add covering index for common queries
+-- This index includes all columns typically needed for dashboard queries
+CREATE INDEX idx_pickups_dashboard_covering ON pickups(scheduled_time, status, pickup_person_id, id, notes, eta_minutes, delay_minutes)
+WHERE status NOT IN ('completed', 'cancelled');
 
 -- ═══════════════════════════════════════════════════════════════
 -- TRIGGERS AND FUNCTIONS

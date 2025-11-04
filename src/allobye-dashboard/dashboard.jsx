@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useOpenAiGlobal } from "../use-openai-global";
 import { useWidgetState } from "../use-widget-state";
 import PickupCard from "./pickup-card";
 import EmergencyAlert from "./emergency-alert";
+import { sanitizeText } from "../utils/sanitize";
 import "./dashboard.css";
 
 export default function Dashboard() {
@@ -111,18 +112,18 @@ export default function Dashboard() {
             },
             (payload) => {
               console.log("Emergency received:", payload);
-              setState({
-                ...state,
+              setState((prev) => ({
+                ...prev,
                 alert: {
                   type: payload.new.emergency_type,
                   context: payload.new.context,
                   child_id: payload.new.child_id,
                 },
-              });
+              }));
 
               // Auto-clear alert after 30 seconds
               setTimeout(() => {
-                setState({ ...state, alert: null });
+                setState((prev) => ({ ...prev, alert: null }));
               }, 30000);
             }
           )
@@ -141,30 +142,44 @@ export default function Dashboard() {
     return () => {
       cleanup?.then((fn) => fn?.());
     };
-  }, [schoolInfo?.id]);
+  }, [schoolInfo?.id, setState]);
 
-  // Filter pickups based on current filter
-  const filteredPickups = pickups.filter((pickup) => {
-    if (state.filter === "all") return true;
+  // Filter pickups based on current filter - memoized to avoid recalculation
+  const filteredPickups = useMemo(() => {
+    return pickups.filter((pickup) => {
+      if (state.filter === "all") return true;
 
-    if (state.filter === "next_30min") {
-      const scheduledTime = new Date(pickup.scheduled_time);
-      const thirtyMinutesFromNow = new Date(currentTime.getTime() + 30 * 60 * 1000);
-      return scheduledTime <= thirtyMinutesFromNow;
-    }
+      if (state.filter === "next_30min") {
+        const scheduledTime = new Date(pickup.scheduled_time);
+        const thirtyMinutesFromNow = new Date(currentTime.getTime() + 30 * 60 * 1000);
+        return scheduledTime <= thirtyMinutesFromNow;
+      }
 
-    if (state.filter === "delays") {
-      return pickup.delay && pickup.delay > 0;
-    }
+      if (state.filter === "delays") {
+        return pickup.delay && pickup.delay > 0;
+      }
 
-    return true;
-  });
+      return true;
+    });
+  }, [pickups, state.filter, currentTime]);
+
+  const handleCloseAlert = useCallback(() => {
+    setState((prev) => ({ ...prev, alert: null }));
+  }, [setState]);
+
+  const handleViewChange = useCallback((view) => {
+    setState((prev) => ({ ...prev, view }));
+  }, [setState]);
+
+  const handleFilterChange = useCallback((filter) => {
+    setState((prev) => ({ ...prev, filter }));
+  }, [setState]);
 
   return (
     <div className="allobye-dashboard fullscreen">
       <header className="dashboard-header">
         <div className="header-left">
-          <h1>{schoolInfo?.name}</h1>
+          <h1>{sanitizeText(schoolInfo?.name)}</h1>
           <div className="pickup-count">
             {filteredPickups.length} ramassage{filteredPickups.length !== 1 ? "s" : ""}
           </div>
@@ -188,7 +203,7 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {state.alert && <EmergencyAlert alert={state.alert} onClose={() => setState({ ...state, alert: null })} />}
+      {state.alert && <EmergencyAlert alert={state.alert} onClose={handleCloseAlert} />}
 
       <section className={`pickup-queue view-${state.view}`}>
         {filteredPickups.length === 0 ? (
@@ -205,14 +220,14 @@ export default function Dashboard() {
         <div className="view-controls">
           <button
             className={state.view === "timeline" ? "active" : ""}
-            onClick={() => setState({ ...state, view: "timeline" })}
+            onClick={() => handleViewChange("timeline")}
           >
             Timeline
           </button>
-          <button className={state.view === "list" ? "active" : ""} onClick={() => setState({ ...state, view: "list" })}>
+          <button className={state.view === "list" ? "active" : ""} onClick={() => handleViewChange("list")}>
             Liste
           </button>
-          <button className={state.view === "grid" ? "active" : ""} onClick={() => setState({ ...state, view: "grid" })}>
+          <button className={state.view === "grid" ? "active" : ""} onClick={() => handleViewChange("grid")}>
             Grille
           </button>
         </div>
@@ -220,19 +235,19 @@ export default function Dashboard() {
         <div className="filter-controls">
           <button
             className={state.filter === "all" ? "active" : ""}
-            onClick={() => setState({ ...state, filter: "all" })}
+            onClick={() => handleFilterChange("all")}
           >
             Tous
           </button>
           <button
             className={state.filter === "next_30min" ? "active" : ""}
-            onClick={() => setState({ ...state, filter: "next_30min" })}
+            onClick={() => handleFilterChange("next_30min")}
           >
             30 min
           </button>
           <button
             className={state.filter === "delays" ? "active" : ""}
-            onClick={() => setState({ ...state, filter: "delays" })}
+            onClick={() => handleFilterChange("delays")}
           >
             Retards
           </button>

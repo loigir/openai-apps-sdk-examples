@@ -1,10 +1,10 @@
-import React from 'react';
+import React, { memo } from 'react';
 
 /**
  * Key Metrics Grid Component
  * Displays the most important metrics in a grid layout
  */
-export const MetricsGrid = ({ data }) => {
+export const MetricsGrid = memo(function MetricsGrid({ data }) {
   return (
     <section className="metrics-grid">
       <div className="metric-card large">
@@ -44,4 +44,4 @@ export const MetricsGrid = ({ data }) => {
       </div>
     </section>
   );
-};
+});

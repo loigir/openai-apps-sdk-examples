@@ -1,10 +1,58 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { ToolUsageChart } from './tool-usage-chart';
 import { ErrorsList } from './errors-list';
 import { MetricsGrid } from './metrics-grid';
 import { AlertsPanel } from './alerts-panel';
 import { SystemHealth } from './system-health';
 import './dashboard.css';
+
+// Mock data function moved outside component to avoid recreation
+function getMockData() {
+  return {
+    uptime_seconds: 3600,
+    total_requests: 1234,
+    active_connections: 5,
+    overall_error_rate: 0.02,
+    overall_avg_latency_ms: 245,
+    top_tools: [
+      { name: 'pickup-schedule-create', call_count: 456, avg_latency_ms: 312, error_rate: 0.01 },
+      { name: 'school-dashboard-fetch', call_count: 234, avg_latency_ms: 189, error_rate: 0.0 },
+      { name: 'delegate-authorize', call_count: 123, avg_latency_ms: 267, error_rate: 0.03 },
+      { name: 'emergency-declare', call_count: 45, avg_latency_ms: 523, error_rate: 0.0 },
+      { name: 'monitoring-dashboard-fetch', call_count: 12, avg_latency_ms: 98, error_rate: 0.0 },
+    ],
+    recent_errors: [
+      {
+        timestamp: new Date().toISOString(),
+        tool: 'pickup-schedule-create',
+        error: 'Database connection timeout',
+        latency_ms: 5023,
+      },
+      {
+        timestamp: new Date(Date.now() - 300000).toISOString(),
+        tool: 'delegate-authorize',
+        error: 'Validation error: Invalid child ID',
+        latency_ms: 45,
+      },
+    ],
+    alerts: [
+      {
+        timestamp: new Date().toISOString(),
+        type: 'latency_high',
+        severity: 'warning',
+        message: 'Tool pickup-schedule-create latency 1523ms exceeds threshold 1000ms',
+      },
+    ],
+    database: {
+      query_count: 5678,
+      error_count: 12,
+      avg_latency_ms: 34.5,
+      error_rate: 0.002,
+      consecutive_failures: 0,
+    },
+    tool_details: {},
+  };
+}
 
 /**
  * Real-time monitoring dashboard for AllôBye MCP server
@@ -43,7 +91,7 @@ const MonitoringDashboard = () => {
 
     const interval = setInterval(() => {
       try {
-        const dashboardData = window.__ALLOBYE_MONITORING_DATA__ || data;
+        const dashboardData = window.__ALLOBYE_MONITORING_DATA__ || getMockData();
         setData(dashboardData);
       } catch (err) {
         console.error('Auto-refresh error:', err);
@@ -51,7 +99,7 @@ const MonitoringDashboard = () => {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [autoRefresh, data]);
+  }, [autoRefresh]);
 
   if (loading) {
     return (
@@ -71,9 +119,16 @@ const MonitoringDashboard = () => {
     );
   }
 
-  const uptimeHours = (data.uptime_seconds / 3600).toFixed(1);
-  const uptimeDays = (data.uptime_seconds / 86400).toFixed(1);
-  const displayUptime = uptimeDays >= 1 ? `${uptimeDays}d` : `${uptimeHours}h`;
+  const uptimeHours = useMemo(() => (data.uptime_seconds / 3600).toFixed(1), [data.uptime_seconds]);
+  const uptimeDays = useMemo(() => (data.uptime_seconds / 86400).toFixed(1), [data.uptime_seconds]);
+  const displayUptime = useMemo(
+    () => (uptimeDays >= 1 ? `${uptimeDays}d` : `${uptimeHours}h`),
+    [uptimeDays, uptimeHours]
+  );
+
+  const handleAutoRefreshToggle = useCallback((e) => {
+    setAutoRefresh(e.target.checked);
+  }, []);
 
   return (
     <div className="monitoring-dashboard">
@@ -88,7 +143,7 @@ const MonitoringDashboard = () => {
             <input
               type="checkbox"
               checked={autoRefresh}
-              onChange={(e) => setAutoRefresh(e.target.checked)}
+              onChange={handleAutoRefreshToggle}
             />
             Auto-refresh (5s)
           </label>
@@ -156,53 +211,5 @@ const MonitoringDashboard = () => {
     </div>
   );
 };
-
-// Mock data for development/testing
-function getMockData() {
-  return {
-    uptime_seconds: 3600,
-    total_requests: 1234,
-    active_connections: 5,
-    overall_error_rate: 0.02,
-    overall_avg_latency_ms: 245,
-    top_tools: [
-      { name: 'pickup-schedule-create', call_count: 456, avg_latency_ms: 312, error_rate: 0.01 },
-      { name: 'school-dashboard-fetch', call_count: 234, avg_latency_ms: 189, error_rate: 0.0 },
-      { name: 'delegate-authorize', call_count: 123, avg_latency_ms: 267, error_rate: 0.03 },
-      { name: 'emergency-declare', call_count: 45, avg_latency_ms: 523, error_rate: 0.0 },
-      { name: 'monitoring-dashboard-fetch', call_count: 12, avg_latency_ms: 98, error_rate: 0.0 },
-    ],
-    recent_errors: [
-      {
-        timestamp: new Date().toISOString(),
-        tool: 'pickup-schedule-create',
-        error: 'Database connection timeout',
-        latency_ms: 5023,
-      },
-      {
-        timestamp: new Date(Date.now() - 300000).toISOString(),
-        tool: 'delegate-authorize',
-        error: 'Validation error: Invalid child ID',
-        latency_ms: 45,
-      },
-    ],
-    alerts: [
-      {
-        timestamp: new Date().toISOString(),
-        type: 'latency_high',
-        severity: 'warning',
-        message: 'Tool pickup-schedule-create latency 1523ms exceeds threshold 1000ms',
-      },
-    ],
-    database: {
-      query_count: 5678,
-      error_count: 12,
-      avg_latency_ms: 34.5,
-      error_rate: 0.002,
-      consecutive_failures: 0,
-    },
-    tool_details: {},
-  };
-}
 
 export default MonitoringDashboard;

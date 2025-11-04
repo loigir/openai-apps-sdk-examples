@@ -16,13 +16,24 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union, Callable
 from uuid import uuid4
 
 import mcp.types as types
 from mcp.server.fastmcp import FastMCP
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from dotenv import load_dotenv
+
+# Import XSS protection validators
+from validators import (
+    sanitize_text,
+    validate_email,
+    validate_name,
+    validate_notes,
+    validate_child_id,
+    validate_emergency_type,
+    validate_permission,
+)
 
 # Import monitoring system
 from monitoring import (
@@ -32,6 +43,59 @@ from monitoring import (
     get_middleware,
     get_health_status,
     MonitoringConfig,
+)
+
+# Import business logic
+from business_logic import (
+    validate_pickup_time,
+    validate_child_limit,
+    validate_permissions,
+    validate_delegate_authorization,
+    validate_emergency_type,
+    calculate_time_window,
+    calculate_notification_priority,
+    determine_notification_recipients,
+    should_coordinate_cross_school,
+    group_children_by_school,
+    is_within_school_hours,
+    calculate_eta_minutes,
+    is_pickup_overdue,
+    can_cancel_pickup,
+    has_permission,
+    Permission,
+    PickupStatus,
+    EmergencyType,
+    TimeWindow,
+)
+
+# Import error handling system
+from exceptions import (
+    AllobyeError,
+    BusinessLogicError,
+    DatabaseError,
+    ParentChildRelationshipError,
+    ResourceNotFoundError,
+    SchoolNotFoundError,
+    StaffSchoolRelationshipError,
+    SupabaseConnectionError,
+    SupabaseError,
+    SupabaseTimeoutError,
+    ValidationError as AllobyeValidationError,
+    AuthenticationError,
+    InvalidCredentialsError,
+    SessionExpiredError,
+)
+
+from error_handlers import (
+    error_handler,
+    retry_with_backoff,
+    DATABASE_RETRY_POLICY,
+    EXTERNAL_API_RETRY_POLICY,
+    ErrorContext,
+    convert_pydantic_error,
+    convert_supabase_error,
+    set_logger as set_error_handler_logger,
+    with_fallback_async,
 )
 
 # Import authentication module
@@ -46,13 +110,65 @@ from auth import (
     verify_parent_owns_child,
     verify_staff_at_school,
     UserProfile,
-    AuthenticationError,
-    InvalidCredentialsError,
-    SessionExpiredError,
 )
 
 # Load environment variables
 load_dotenv()
+
+# Validate required environment variables
+def validate_environment() -> None:
+    """Validate that all required environment variables are set.
+
+    Raises:
+        ValueError: If any required environment variable is missing
+    """
+    required_vars = {
+        "SUPABASE_URL": "Supabase project URL",
+        "SUPABASE_SERVICE_ROLE_KEY": "Supabase service role key (CRITICAL)",
+        "SUPABASE_ANON_KEY": "Supabase anonymous key",
+        "DATABASE_URL": "Database connection string",
+        "SUPABASE_DB_PASSWORD": "Database password",
+    }
+
+    optional_vars = {
+        "SUPABASE_PROJECT_REF": "Supabase project reference ID",
+        "MOTION_PLUS_API_KEY": "Motion+ API key",
+        "ENVIRONMENT": "Deployment environment (defaults to 'production')",
+        "LOG_LEVEL": "Logging level (defaults to 'INFO')",
+    }
+
+    missing_vars = []
+
+    for var_name, description in required_vars.items():
+        value = os.getenv(var_name)
+        if not value:
+            missing_vars.append(f"  - {var_name}: {description}")
+        elif var_name == "SUPABASE_SERVICE_ROLE_KEY":
+            # Validate it looks like a JWT token
+            if not value.startswith("eyJ"):
+                missing_vars.append(f"  - {var_name}: Invalid format (should be JWT token)")
+
+    if missing_vars:
+        error_msg = (
+            "\n❌ CRITICAL: Required environment variables are missing or invalid!\n\n"
+            "Missing variables:\n" + "\n".join(missing_vars) + "\n\n"
+            "Setup instructions:\n"
+            "1. Copy .env.example to .env:\n"
+            "   cp .env.example .env\n\n"
+            "2. Edit .env with your Supabase credentials\n\n"
+            "3. See SECURITY.md for detailed setup instructions\n\n"
+            "⚠️  NEVER commit the .env file to version control!\n"
+        )
+        raise ValueError(error_msg)
+
+    # Log optional variables status
+    for var_name, description in optional_vars.items():
+        value = os.getenv(var_name)
+        if not value:
+            print(f"ℹ️  Optional variable not set: {var_name} ({description})")
+
+# Validate environment on startup
+validate_environment()
 
 # Initialize monitoring
 monitoring_config = MonitoringConfig(
@@ -64,13 +180,17 @@ monitoring_middleware = initialize_monitoring(monitoring_config)
 logger = get_logger()
 metrics_collector = get_metrics()
 
+# Initialize error handler logger
+set_error_handler_logger(logger)
+
 logger.info("AllôBye MCP Server starting up")
+logger.info("Error handling system initialized")
 
 # Supabase client setup (lazy initialization)
 _supabase_client = None
 
 
-def get_supabase():
+def get_supabase() -> Optional[Any]:
     """Get or create Supabase client."""
     global _supabase_client
     if _supabase_client is None:
@@ -124,6 +244,24 @@ class PickupScheduleInput(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
+    @field_validator('child_ids')
+    @classmethod
+    def validate_child_ids(cls, v: List[str]) -> List[str]:
+        """Validate and sanitize child IDs."""
+        return [validate_child_id(child_id) for child_id in v]
+
+    @field_validator('pickup_person_id')
+    @classmethod
+    def validate_pickup_person_id(cls, v: str) -> str:
+        """Validate and sanitize pickup person ID."""
+        return validate_child_id(v)  # Same validation as child IDs
+
+    @field_validator('notes')
+    @classmethod
+    def validate_notes_field(cls, v: Optional[str]) -> Optional[str]:
+        """Sanitize notes to prevent XSS."""
+        return validate_notes(v)
+
 
 class DelegateAuthorizeInput(BaseModel):
     """Input schema for authorizing a delegate."""
@@ -150,6 +288,24 @@ class DelegateAuthorizeInput(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
+    @field_validator('delegate_email')
+    @classmethod
+    def validate_delegate_email(cls, v: str) -> str:
+        """Validate and sanitize email address."""
+        return validate_email(v)
+
+    @field_validator('child_ids')
+    @classmethod
+    def validate_child_ids(cls, v: List[str]) -> List[str]:
+        """Validate and sanitize child IDs."""
+        return [validate_child_id(child_id) for child_id in v]
+
+    @field_validator('permissions')
+    @classmethod
+    def validate_permissions_list(cls, v: List[str]) -> List[str]:
+        """Validate permissions against allowed values."""
+        return [validate_permission(perm) for perm in v]
+
 
 class EmergencyDeclareInput(BaseModel):
     """Input schema for declaring an emergency."""
@@ -175,6 +331,27 @@ class EmergencyDeclareInput(BaseModel):
     )
 
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    @field_validator('child_id')
+    @classmethod
+    def validate_child_id_field(cls, v: str) -> str:
+        """Validate and sanitize child ID."""
+        return validate_child_id(v)
+
+    @field_validator('emergency_type')
+    @classmethod
+    def validate_emergency_type_field(cls, v: str) -> str:
+        """Validate emergency type against allowed values."""
+        return validate_emergency_type(v)
+
+    @field_validator('context')
+    @classmethod
+    def validate_context_field(cls, v: str) -> str:
+        """Sanitize context to prevent XSS (CRITICAL)."""
+        sanitized = validate_notes(v)
+        if not sanitized:
+            raise ValueError("Emergency context cannot be empty")
+        return sanitized
 
 
 class SchoolDashboardInput(BaseModel):
@@ -237,6 +414,18 @@ class AuthSignupInput(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
+    @field_validator('email')
+    @classmethod
+    def validate_email_field(cls, v: str) -> str:
+        """Validate and sanitize email address."""
+        return validate_email(v)
+
+    @field_validator('name')
+    @classmethod
+    def validate_name_field(cls, v: Optional[str]) -> Optional[str]:
+        """Validate and sanitize name."""
+        return validate_name(v)
+
 
 class AuthLoginInput(BaseModel):
     """Input schema for user login."""
@@ -252,6 +441,12 @@ class AuthLoginInput(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
+    @field_validator('email')
+    @classmethod
+    def validate_email_field(cls, v: str) -> str:
+        """Validate and sanitize email address."""
+        return validate_email(v)
+
 
 class AuthResetPasswordInput(BaseModel):
     """Input schema for password reset request."""
@@ -262,6 +457,12 @@ class AuthResetPasswordInput(BaseModel):
     )
 
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    @field_validator('email')
+    @classmethod
+    def validate_email_field(cls, v: str) -> str:
+        """Validate and sanitize email address."""
+        return validate_email(v)
 
 
 class AuthProfileUpdateInput(BaseModel):
@@ -277,6 +478,12 @@ class AuthProfileUpdateInput(BaseModel):
     )
 
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    @field_validator('name')
+    @classmethod
+    def validate_name_field(cls, v: Optional[str]) -> Optional[str]:
+        """Validate and sanitize name."""
+        return validate_name(v)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -396,8 +603,20 @@ def require_auth(user: Optional[UserProfile], role: Optional[str] = None) -> boo
 # ═══════════════════════════════════════════════════════════════
 
 
+@retry_with_backoff(policy=DATABASE_RETRY_POLICY)
 async def get_schools_for_children(child_ids: List[str]) -> List[Dict[str, Any]]:
-    """Get unique schools for a list of children."""
+    """Get unique schools for a list of children with retry logic.
+
+    Args:
+        child_ids: List of child IDs to fetch schools for
+
+    Returns:
+        List of school dictionaries
+
+    Raises:
+        SupabaseError: On database errors
+        ResourceNotFoundError: If children not found
+    """
     supabase = get_supabase()
     if not supabase:
         # Mock data for development
@@ -406,30 +625,49 @@ async def get_schools_for_children(child_ids: List[str]) -> List[Dict[str, Any]]
         ]
 
     try:
-        with monitoring_middleware.monitor_db_query("get_schools_for_children"):
-            # Query children and their schools
-            response = supabase.table("children").select("school_id, schools(*)").in_("id", child_ids).execute()
+        with ErrorContext("get_schools_for_children", child_ids=child_ids):
+            with monitoring_middleware.monitor_db_query("get_schools_for_children"):
+                # Query children and their schools
+                response = supabase.table("children").select("school_id, schools(*)").in_("id", child_ids).execute()
 
-        # Extract unique schools
-        schools = {}
-        for child in response.data:
-            if child.get("schools"):
-                school = child["schools"]
-                schools[school["id"]] = school
+            # Extract unique schools
+            schools = {}
+            for child in response.data:
+                if child.get("schools"):
+                    school = child["schools"]
+                    schools[school["id"]] = school
 
-        return list(schools.values())
+            return list(schools.values())
+
     except Exception as e:
+        # Convert to custom exception
+        supabase_error = convert_supabase_error(e)
         logger.error("Error fetching schools", error=str(e), child_ids=child_ids)
-        return []
+        raise supabase_error
 
 
+@retry_with_backoff(policy=DATABASE_RETRY_POLICY)
 async def create_pickup_request(
     child_ids: List[str],
     pickup_person_id: str,
     scheduled_time: str,
     notes: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Create a pickup request in the database."""
+    """Create a pickup request in the database with retry logic.
+
+    Args:
+        child_ids: List of child IDs
+        pickup_person_id: ID of person picking up
+        scheduled_time: Scheduled pickup time (ISO format)
+        notes: Optional notes
+
+    Returns:
+        Created pickup record
+
+    Raises:
+        SupabaseError: On database errors
+        BusinessLogicError: On business rule violations
+    """
     supabase = get_supabase()
 
     pickup_id = str(uuid4())
@@ -447,29 +685,33 @@ async def create_pickup_request(
         }
 
     try:
-        with monitoring_middleware.monitor_db_query("create_pickup_request"):
-            # Insert pickup record
-            pickup_data = {
-                "id": pickup_id,
-                "pickup_person_id": pickup_person_id,
-                "scheduled_time": scheduled_time,
-                "status": "confirmed",
-                "notes": notes,
-            }
+        with ErrorContext("create_pickup_request", pickup_id=pickup_id, child_ids=child_ids):
+            with monitoring_middleware.monitor_db_query("create_pickup_request"):
+                # Insert pickup record
+                pickup_data = {
+                    "id": pickup_id,
+                    "pickup_person_id": pickup_person_id,
+                    "scheduled_time": scheduled_time,
+                    "status": "confirmed",
+                    "notes": notes,
+                }
 
-            response = supabase.table("pickups").insert(pickup_data).execute()
+                response = supabase.table("pickups").insert(pickup_data).execute()
 
-            # Link children to pickup
-            for child_id in child_ids:
-                supabase.table("pickup_children").insert({
-                    "pickup_id": pickup_id,
-                    "child_id": child_id,
-                }).execute()
+                # Link children to pickup
+                for child_id in child_ids:
+                    supabase.table("pickup_children").insert({
+                        "pickup_id": pickup_id,
+                        "child_id": child_id,
+                    }).execute()
 
-        return response.data[0] if response.data else pickup_data
+            return response.data[0] if response.data else pickup_data  # type: ignore[return-value]
+
     except Exception as e:
+        # Convert to custom exception
+        supabase_error = convert_supabase_error(e)
         logger.error("Error creating pickup", error=str(e), pickup_id=pickup_id)
-        raise
+        raise supabase_error
 
 
 async def coordinate_cross_school_pickup(
@@ -617,17 +859,10 @@ async def get_school_pickups(
     """Get pickup queue for a school dashboard."""
     supabase = get_supabase()
 
-    # Calculate time range
-    now = datetime.now()
-    if time_window == "current":
-        start_time = now
-        end_time = now + timedelta(minutes=30)
-    elif time_window == "today":
-        start_time = now.replace(hour=0, minute=0, second=0)
-        end_time = now.replace(hour=23, minute=59, second=59)
-    else:
-        start_time = now
-        end_time = now + timedelta(hours=24)
+    # Calculate time range using business logic
+    time_range = calculate_time_window(time_window)
+    start_time = time_range.start
+    end_time = time_range.end
 
     if not supabase:
         # Mock data
@@ -701,7 +936,7 @@ mcp = FastMCP(
 
 def _tool_meta(widget: Optional[AllobyeWidget] = None) -> Dict[str, Any]:
     """Generate tool metadata."""
-    meta = {
+    meta: Dict[str, Any] = {
         "annotations": {
             "destructiveHint": False,
             "openWorldHint": False,
@@ -723,13 +958,13 @@ def _tool_meta(widget: Optional[AllobyeWidget] = None) -> Dict[str, Any]:
 
 def _embedded_widget_resource(widget: AllobyeWidget) -> types.EmbeddedResource:
     """Create embedded widget resource."""
+    from mcp.types import AnyUrl
     return types.EmbeddedResource(
         type="resource",
         resource=types.TextResourceContents(
-            uri=widget.template_uri,
+            uri=AnyUrl(widget.template_uri),
             mimeType=MIME_TYPE,
             text=widget.html,
-            title=widget.title,
         ),
     )
 
@@ -739,7 +974,7 @@ def _embedded_widget_resource(widget: AllobyeWidget) -> types.EmbeddedResource:
 # ═══════════════════════════════════════════════════════════════
 
 
-@mcp._mcp_server.list_tools()
+@mcp._mcp_server.list_tools()  # type: ignore[no-untyped-call]
 async def _list_tools() -> List[types.Tool]:
     """List all available AllôBye tools."""
     return [
@@ -841,113 +1076,79 @@ async def _list_tools() -> List[types.Tool]:
 # ═══════════════════════════════════════════════════════════════
 
 
+@error_handler
 async def _handle_auth_signup(arguments: Dict[str, Any]) -> types.CallToolResult:
-    """Handle user signup."""
-    try:
-        payload = AuthSignupInput.model_validate(arguments)
-    except ValidationError as exc:
-        return types.CallToolResult(
-            content=[types.TextContent(type="text", text=f"Erreur de validation: {exc.errors()}")],
-            isError=True,
-        )
+    """Handle user signup with comprehensive error handling."""
+    # Validate input (error_handler will catch ValidationError)
+    payload = AuthSignupInput.model_validate(arguments)
 
-    try:
-        result = await signup_user(
-            email=payload.email,
-            password=payload.password,
-            name=payload.name,
-            role=payload.role,
-            schools=payload.schools,
-        )
+    # Execute signup (error_handler will catch AuthenticationError)
+    result = await signup_user(
+        email=payload.email,
+        password=payload.password,
+        name=payload.name,
+        role=payload.role,
+        schools=payload.schools,
+    )
 
-        return types.CallToolResult(
-            content=[
-                types.TextContent(
-                    type="text",
-                    text=f"✓ Compte créé avec succès pour {payload.email}. Veuillez vérifier votre email.",
-                )
-            ],
-            structuredContent={
-                "user_id": result["user"]["id"],
-                "email": result["user"]["email"],
-                "email_verified": result["user"]["email_verified"],
-            },
-            _meta={
-                "session": result["session"],
-                "requires_verification": not result["user"]["email_verified"],
-            },
-        )
-    except AuthenticationError as e:
-        return types.CallToolResult(
-            content=[types.TextContent(type="text", text=f"Erreur d'inscription: {str(e)}")],
-            isError=True,
-        )
+    return types.CallToolResult(
+        content=[
+            types.TextContent(
+                type="text",
+                text=f"✓ Compte créé avec succès pour {payload.email}. Veuillez vérifier votre email.",
+            )
+        ],
+        structuredContent={
+            "user_id": result["user"]["id"],
+            "email": result["user"]["email"],
+            "email_verified": result["user"]["email_verified"],
+        },
+        _meta={
+            "session": result["session"],
+            "requires_verification": not result["user"]["email_verified"],
+        },
+    )
 
 
+@error_handler
 async def _handle_auth_login(arguments: Dict[str, Any]) -> types.CallToolResult:
-    """Handle user login."""
-    try:
-        payload = AuthLoginInput.model_validate(arguments)
-    except ValidationError as exc:
-        return types.CallToolResult(
-            content=[types.TextContent(type="text", text=f"Erreur de validation: {exc.errors()}")],
-            isError=True,
-        )
+    """Handle user login with comprehensive error handling."""
+    payload = AuthLoginInput.model_validate(arguments)
+    result = await login_user(email=payload.email, password=payload.password)
 
-    try:
-        result = await login_user(email=payload.email, password=payload.password)
-
-        return types.CallToolResult(
-            content=[
-                types.TextContent(
-                    type="text",
-                    text=f"✓ Connexion réussie! Bienvenue {result['profile'].get('name') or result['user']['email']}",
-                )
-            ],
-            structuredContent={
-                "user_id": result["user"]["id"],
-                "email": result["user"]["email"],
-                "role": result["profile"]["role"],
-                "access_token": result["session"]["access_token"],
-            },
-            _meta={
-                "session": result["session"],
-                "profile": result["profile"],
-            },
-        )
-    except InvalidCredentialsError:
-        return types.CallToolResult(
-            content=[types.TextContent(type="text", text="Email ou mot de passe incorrect.")],
-            isError=True,
-        )
-    except AuthenticationError as e:
-        return types.CallToolResult(
-            content=[types.TextContent(type="text", text=f"Erreur de connexion: {str(e)}")],
-            isError=True,
-        )
+    return types.CallToolResult(
+        content=[
+            types.TextContent(
+                type="text",
+                text=f"✓ Connexion réussie! Bienvenue {result['profile'].get('name') or result['user']['email']}",
+            )
+        ],
+        structuredContent={
+            "user_id": result["user"]["id"],
+            "email": result["user"]["email"],
+            "role": result["profile"]["role"],
+            "access_token": result["session"]["access_token"],
+        },
+        _meta={
+            "session": result["session"],
+            "profile": result["profile"],
+        },
+    )
 
 
+@error_handler
 async def _handle_auth_logout(arguments: Dict[str, Any]) -> types.CallToolResult:
-    """Handle user logout."""
+    """Handle user logout with comprehensive error handling."""
     access_token = arguments.get("accessToken") or arguments.get("access_token")
 
     if not access_token:
-        return types.CallToolResult(
-            content=[types.TextContent(type="text", text="Token d'accès requis pour la déconnexion")],
-            isError=True,
-        )
+        raise AuthenticationError("Token d'accès requis pour la déconnexion")
 
-    try:
-        result = await logout_user(access_token=access_token)
-        return types.CallToolResult(
-            content=[types.TextContent(type="text", text="✓ Déconnexion réussie")],
-            structuredContent=result,
-        )
-    except AuthenticationError as e:
-        return types.CallToolResult(
-            content=[types.TextContent(type="text", text=f"Erreur de déconnexion: {str(e)}")],
-            isError=True,
-        )
+    result = await logout_user(access_token=access_token)
+    return types.CallToolResult(
+        content=[types.TextContent(type="text", text="✓ Déconnexion réussie")],
+        structuredContent=result,
+    )
 
 
 async def _handle_auth_reset_password(arguments: Dict[str, Any]) -> types.CallToolResult:
@@ -1048,6 +1249,45 @@ async def _handle_pickup_schedule_create(arguments: Dict[str, Any]) -> types.Cal
             isError=True,
         )
 
+    # Validate child limit using business logic
+    child_limit_result = validate_child_limit(payload.child_ids)
+    if not child_limit_result.valid:
+        return types.CallToolResult(
+            content=[
+                types.TextContent(
+                    type="text",
+                    text=f"Erreur: {', '.join(child_limit_result.errors)}",
+                )
+            ],
+            isError=True,
+        )
+
+    # Validate pickup time using business logic
+    try:
+        scheduled_dt = datetime.fromisoformat(payload.scheduled_time.replace("Z", "+00:00"))
+        time_validation = validate_pickup_time(scheduled_dt)
+
+        if not time_validation.valid:
+            return types.CallToolResult(
+                content=[
+                    types.TextContent(
+                        type="text",
+                        text=f"Erreur de planification: {', '.join(time_validation.errors)}",
+                    )
+                ],
+                isError=True,
+            )
+    except (ValueError, AttributeError) as e:
+        return types.CallToolResult(
+            content=[
+                types.TextContent(
+                    type="text",
+                    text=f"Format de date invalide: {str(e)}",
+                )
+            ],
+            isError=True,
+        )
+
     # Verify parent owns all children
     for child_id in payload.child_ids:
         if not await verify_parent_owns_child(user.id, child_id):
@@ -1063,9 +1303,10 @@ async def _handle_pickup_schedule_create(arguments: Dict[str, Any]) -> types.Cal
 
     # Get schools for children
     schools = await get_schools_for_children(payload.child_ids)
+    school_ids = [s['id'] for s in schools]
 
-    # Coordinate pickup (multi-school if needed)
-    if len(schools) > 1:
+    # Use business logic to determine if cross-school coordination is needed
+    if should_coordinate_cross_school(school_ids):
         results = await coordinate_cross_school_pickup(
             payload.child_ids,
             payload.pickup_person_id,
@@ -1131,6 +1372,25 @@ async def _handle_delegate_authorize(arguments: Dict[str, Any]) -> types.CallToo
                 types.TextContent(
                     type="text",
                     text=f"Erreur de validation: {exc.errors()}",
+                )
+            ],
+            isError=True,
+        )
+
+    # Validate delegate authorization using business logic
+    validation_result = validate_delegate_authorization(
+        delegate_email=payload.delegate_email,
+        child_ids=payload.child_ids,
+        permissions=payload.permissions,
+        school_ids=payload.schools,
+    )
+
+    if not validation_result.valid:
+        return types.CallToolResult(
+            content=[
+                types.TextContent(
+                    type="text",
+                    text=f"Erreur de validation: {', '.join(validation_result.errors)}",
                 )
             ],
             isError=True,
@@ -1478,14 +1738,15 @@ async def _handle_read_resource(req: types.ReadResourceRequest) -> types.ServerR
     return types.ServerResult(types.ReadResourceResult(contents=contents))
 
 
-@mcp._mcp_server.list_resources()
-async def _list_resources() -> List[types.Resource]:
+@mcp._mcp_server.list_resources()  # type: ignore[no-untyped-call]
+async def _list_resources() -> List[types.Resource]:  # type: ignore[return]
     """List available resources."""
+    from mcp.types import AnyUrl
     return [
         types.Resource(
             name=SCHOOL_DASHBOARD_WIDGET.title,
             title=SCHOOL_DASHBOARD_WIDGET.title,
-            uri=SCHOOL_DASHBOARD_WIDGET.template_uri,
+            uri=AnyUrl(SCHOOL_DASHBOARD_WIDGET.template_uri),
             description="School dashboard widget markup",
             mimeType=MIME_TYPE,
             _meta=_tool_meta(SCHOOL_DASHBOARD_WIDGET),
@@ -1493,7 +1754,7 @@ async def _list_resources() -> List[types.Resource]:
         types.Resource(
             name=MONITORING_DASHBOARD_WIDGET.title,
             title=MONITORING_DASHBOARD_WIDGET.title,
-            uri=MONITORING_DASHBOARD_WIDGET.template_uri,
+            uri=AnyUrl(MONITORING_DASHBOARD_WIDGET.template_uri),
             description="Monitoring dashboard widget markup",
             mimeType=MIME_TYPE,
             _meta=_tool_meta(MONITORING_DASHBOARD_WIDGET),
@@ -1501,7 +1762,7 @@ async def _list_resources() -> List[types.Resource]:
     ]
 
 
-@mcp._mcp_server.list_resource_templates()
+@mcp._mcp_server.list_resource_templates()  # type: ignore[no-untyped-call]
 async def _list_resource_templates() -> List[types.ResourceTemplate]:
     """List resource templates."""
     return [
@@ -1541,14 +1802,22 @@ from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.routing import Route
 
 
-async def health_endpoint(request):
-    """Health check endpoint."""
-    health_status = get_health_status()
+async def health_endpoint(request: Any) -> JSONResponse:
+    """Enhanced health check endpoint with comprehensive component checks."""
+    try:
+        # Try enhanced health checks first
+        from health_checks import get_health_status_enhanced
+        health_status = await get_health_status_enhanced()
+    except Exception as e:
+        # Fall back to basic health check if enhanced version fails
+        logger.warning("Enhanced health check failed, using basic health check", error=str(e))
+        health_status = get_health_status()
+
     status_code = 200 if health_status["status"] == "healthy" else 503
     return JSONResponse(health_status, status_code=status_code)
 
 
-async def metrics_endpoint(request):
+async def metrics_endpoint(request: Any) -> PlainTextResponse:
     """Prometheus metrics endpoint."""
     metrics_text = metrics_collector.export_prometheus()
     return PlainTextResponse(metrics_text, media_type="text/plain; version=0.0.4")
@@ -1557,6 +1826,41 @@ async def metrics_endpoint(request):
 # Add routes to the app
 try:
     from starlette.middleware.cors import CORSMiddleware
+    from starlette.middleware.base import BaseHTTPMiddleware
+    from starlette.requests import Request
+
+    # Security Headers Middleware for XSS Protection
+    class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+        """Add security headers to all responses to prevent XSS attacks."""
+
+        async def dispatch(self, request: Request, call_next: Callable[[Request], Any]) -> Any:
+            response = await call_next(request)
+
+            # Content Security Policy - strict CSP to prevent XSS
+            csp_directives = [
+                "default-src 'self'",
+                "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.openai.com",
+                "style-src 'self' 'unsafe-inline'",
+                "img-src 'self' data: https:",
+                "font-src 'self' data:",
+                "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+                "frame-ancestors 'none'",
+                "base-uri 'self'",
+                "form-action 'self'",
+            ]
+            response.headers["Content-Security-Policy"] = "; ".join(csp_directives)
+
+            # Additional XSS protection headers
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["X-Frame-Options"] = "DENY"
+            response.headers["X-XSS-Protection"] = "1; mode=block"
+            response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+            response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+
+            return response
+
+    # Add security headers middleware
+    app.add_middleware(SecurityHeadersMiddleware)
 
     app.add_middleware(
         CORSMiddleware,

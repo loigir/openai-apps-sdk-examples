@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useWidgetState } from "../use-widget-state";
 import "./auth-screen.css";
 
@@ -21,14 +21,14 @@ export default function AuthScreen({ onAuthenticated }) {
     confirmPassword: "",
   });
 
-  const handleInputChange = (e) => {
+  const handleInputChange = useCallback((e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
-  };
+  }, []);
 
-  const handleLogin = async (e) => {
+  const handleLogin = useCallback(async (e) => {
     e.preventDefault();
-    setState({ ...state, loading: true, error: null });
+    setState((prev) => ({ ...prev, loading: true, error: null }));
 
     try {
       if (!window.openai?.callTool) {
@@ -53,35 +53,35 @@ export default function AuthScreen({ onAuthenticated }) {
           });
         }
 
-        setState({ ...state, loading: false });
+        setState((prev) => ({ ...prev, loading: false }));
       } else {
         throw new Error("Login failed: No access token returned");
       }
     } catch (error) {
       console.error("Login error:", error);
-      setState({
-        ...state,
+      setState((prev) => ({
+        ...prev,
         loading: false,
         error: error.message || "Email ou mot de passe incorrect",
-      });
+      }));
     }
-  };
+  }, [formData.email, formData.password, onAuthenticated, setState]);
 
-  const handleSignup = async (e) => {
+  const handleSignup = useCallback(async (e) => {
     e.preventDefault();
 
     // Validation
     if (formData.password !== formData.confirmPassword) {
-      setState({ ...state, error: "Les mots de passe ne correspondent pas" });
+      setState((prev) => ({ ...prev, error: "Les mots de passe ne correspondent pas" }));
       return;
     }
 
     if (formData.password.length < 6) {
-      setState({ ...state, error: "Le mot de passe doit contenir au moins 6 caractères" });
+      setState((prev) => ({ ...prev, error: "Le mot de passe doit contenir au moins 6 caractères" }));
       return;
     }
 
-    setState({ ...state, loading: true, error: null });
+    setState((prev) => ({ ...prev, loading: true, error: null }));
 
     try {
       if (!window.openai?.callTool) {
@@ -116,27 +116,27 @@ export default function AuthScreen({ onAuthenticated }) {
         }
       } else {
         // Show success message and switch to login
-        setState({
-          ...state,
+        setState((prev) => ({
+          ...prev,
           loading: false,
           mode: "login",
           error: null,
-        });
+        }));
         alert("Compte créé avec succès! Veuillez vérifier votre email et vous connecter.");
       }
     } catch (error) {
       console.error("Signup error:", error);
-      setState({
-        ...state,
+      setState((prev) => ({
+        ...prev,
         loading: false,
         error: error.message || "Erreur lors de la création du compte",
-      });
+      }));
     }
-  };
+  }, [formData.email, formData.password, formData.confirmPassword, formData.name, formData.role, onAuthenticated, setState]);
 
-  const handleResetPassword = async (e) => {
+  const handleResetPassword = useCallback(async (e) => {
     e.preventDefault();
-    setState({ ...state, loading: true, error: null });
+    setState((prev) => ({ ...prev, loading: true, error: null }));
 
     try {
       if (!window.openai?.callTool) {
@@ -148,16 +148,28 @@ export default function AuthScreen({ onAuthenticated }) {
       });
 
       alert("Email de réinitialisation envoyé! Veuillez vérifier votre boîte de réception.");
-      setState({ ...state, loading: false, mode: "login" });
+      setState((prev) => ({ ...prev, loading: false, mode: "login" }));
     } catch (error) {
       console.error("Reset password error:", error);
-      setState({
-        ...state,
+      setState((prev) => ({
+        ...prev,
         loading: false,
         error: "Erreur lors de l'envoi de l'email de réinitialisation",
-      });
+      }));
     }
-  };
+  }, [formData.email, setState]);
+
+  const handleSwitchToReset = useCallback(() => {
+    setState((prev) => ({ ...prev, mode: "reset", error: null }));
+  }, [setState]);
+
+  const handleSwitchToSignup = useCallback(() => {
+    setState((prev) => ({ ...prev, mode: "signup", error: null }));
+  }, [setState]);
+
+  const handleSwitchToLogin = useCallback(() => {
+    setState((prev) => ({ ...prev, mode: "login", error: null }));
+  }, [setState]);
 
   return (
     <div className="auth-screen">
@@ -214,14 +226,14 @@ export default function AuthScreen({ onAuthenticated }) {
               <button
                 type="button"
                 className="link-button"
-                onClick={() => setState({ ...state, mode: "reset", error: null })}
+                onClick={handleSwitchToReset}
               >
                 Mot de passe oublié?
               </button>
               <button
                 type="button"
                 className="link-button"
-                onClick={() => setState({ ...state, mode: "signup", error: null })}
+                onClick={handleSwitchToSignup}
               >
                 Créer un compte
               </button>
@@ -305,7 +317,7 @@ export default function AuthScreen({ onAuthenticated }) {
               <button
                 type="button"
                 className="link-button"
-                onClick={() => setState({ ...state, mode: "login", error: null })}
+                onClick={handleSwitchToLogin}
               >
                 Déjà un compte? Se connecter
               </button>
@@ -342,7 +354,7 @@ export default function AuthScreen({ onAuthenticated }) {
               <button
                 type="button"
                 className="link-button"
-                onClick={() => setState({ ...state, mode: "login", error: null })}
+                onClick={handleSwitchToLogin}
               >
                 Retour à la connexion
               </button>
