@@ -1,0 +1,465 @@
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                          ALLOBYE ARCHITECTURE LAYERS                           ║
+║                       School Pickup Coordination System                        ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+┌────────────────────────────────────────────────────────────────────────────────┐
+│                                 LAYER 0: CLIENT                                │
+│                             (External Systems)                                 │
+├────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                │
+│  ┌─────────────────────┐         ┌──────────────────────┐                    │
+│  │   ChatGPT Web UI    │         │  Mobile Browser      │                    │
+│  │  - Conversation     │         │  - Parent access     │                    │
+│  │  - Natural language │         │  - Delegate access   │                    │
+│  └──────────┬──────────┘         └──────────┬───────────┘                    │
+│             │                               │                                 │
+│             │ HTTPS (MCP)                   │ HTTPS (Widget)                  │
+│             │                               │                                 │
+└─────────────┼───────────────────────────────┼─────────────────────────────────┘
+              │                               │
+              ▼                               ▼
+┌────────────────────────────────────────────────────────────────────────────────┐
+│                        LAYER 1: PRESENTATION LAYER                             │
+│                            (React Widgets)                                     │
+├────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                │
+│  ┌───────────────────────────────────┐  ┌───────────────────────────────────┐│
+│  │   allobye-dashboard (Widget)      │  │  allobye-monitoring (Widget)      ││
+│  │   /src/allobye-dashboard/         │  │  /src/allobye-monitoring/         ││
+│  ├───────────────────────────────────┤  ├───────────────────────────────────┤│
+│  │ - index.jsx                       │  │ - index.jsx                       ││
+│  │   └─ App wrapper                  │  │   └─ Monitoring app               ││
+│  │   └─ Session management           │  │                                   ││
+│  │                                   │  │ - dashboard.jsx                   ││
+│  │ - auth-screen.jsx                 │  │   └─ Main monitoring view         ││
+│  │   └─ Login/Signup UI              │  │                                   ││
+│  │   └─ MCP tool calls:              │  │ - system-health.jsx               ││
+│  │      • auth-login                 │  │ - metrics-grid.jsx                ││
+│  │      • auth-signup                │  │ - tool-usage-chart.jsx            ││
+│  │                                   │  │ - errors-list.jsx                 ││
+│  │ - dashboard.jsx                   │  │ - alerts-panel.jsx                ││
+│  │   └─ Pickup queue display         │  │                                   ││
+│  │   └─ Timeline/List/Grid views     │  │ Uses: monitoring-dashboard-fetch  ││
+│  │   └─ Auto-refresh (30s)           │  │ Refresh: 5s                       ││
+│  │   └─ MCP tool call:               │  │                                   ││
+│  │      • school-dashboard-fetch     │  └───────────────────────────────────┘│
+│  │   └─ Supabase Realtime:           │                                       │
+│  │      • pickups table              │                                       │
+│  │      • emergencies table          │                                       │
+│  │                                   │                                       │
+│  │ - pickup-card.jsx                 │                                       │
+│  │   └─ Individual pickup display    │                                       │
+│  │                                   │                                       │
+│  │ - emergency-alert.jsx             │                                       │
+│  │   └─ Emergency notification       │                                       │
+│  └───────────────────────────────────┘                                       │
+│                                                                                │
+│  State Management: React hooks (useState, useEffect, useWidgetState)          │
+│  Global: useOpenAiGlobal (toolOutput, toolResponseMetadata)                   │
+│                                                                                │
+└─────────────┬──────────────────────────────┬───────────────────────────────────┘
+              │                              │
+              │ MCP Tools                    │ WebSocket (Supabase Realtime)
+              │ (window.openai.callTool)     │
+              ▼                              ▼
+┌────────────────────────────────────────────────────────────────────────────────┐
+│                      LAYER 2: APPLICATION LAYER                                │
+│                      (MCP Server Orchestration)                                │
+│                      /allobye_server_python/main.py                            │
+├────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                │
+│  ┌──────────────────────────────────────────────────────────────────────────┐ │
+│  │  FastMCP Server (lines 696-700)                                          │ │
+│  │  - Stateless HTTP mode                                                   │ │
+│  │  - Widget resource serving                                               │ │
+│  │  - CORS enabled                                                          │ │
+│  └──────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                │
+│  ┌──────────────────────────────────────────────────────────────────────────┐ │
+│  │  MCP TOOLS (10 tools)                                                    │ │
+│  ├──────────────────────────────────────────────────────────────────────────┤ │
+│  │  Authentication Tools:                                                   │ │
+│  │    • auth-signup          → _handle_auth_signup (lines 844-884)         │ │
+│  │    • auth-login           → _handle_auth_login (lines 887-927)          │ │
+│  │    • auth-logout          → _handle_auth_logout (lines 930-950)         │ │
+│  │    • auth-reset-password  → _handle_auth_reset_password (lines 953-973) │ │
+│  │    • auth-profile         → _handle_auth_profile (lines 976-1015)       │ │
+│  │                                                                          │ │
+│  │  Pickup Management Tools:                                                │ │
+│  │    • pickup-schedule-create → _handle_pickup_schedule_create            │ │
+│  │                                (lines 1023-1108)                         │ │
+│  │    • delegate-authorize     → _handle_delegate_authorize                │ │
+│  │                                (lines 1111-1178)                         │ │
+│  │    • emergency-declare      → _handle_emergency_declare                 │ │
+│  │                                (lines 1181-1249)                         │ │
+│  │    • school-dashboard-fetch → _handle_school_dashboard_fetch            │ │
+│  │                                (lines 1252-1328)                         │ │
+│  │                                                                          │ │
+│  │  Observability Tools:                                                    │ │
+│  │    • monitoring-dashboard-fetch → _handle_monitoring_dashboard_fetch    │ │
+│  │                                    (lines 1331-1384)                     │ │
+│  └──────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                │
+│  ┌──────────────────────────────────────────────────────────────────────────┐ │
+│  │  Request Handler (lines 1392-1449)                                       │ │
+│  │  - _call_tool_request_monitored                                          │ │
+│  │  - Metrics collection (start/end)                                        │ │
+│  │  - Error handling                                                        │ │
+│  │  - Logging                                                               │ │
+│  └──────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                │
+│  ┌──────────────────────────────────────────────────────────────────────────┐ │
+│  │  Middleware (lines 351-392)                                              │ │
+│  │  - get_current_user(arguments) → validates JWT                           │ │
+│  │  - require_auth(user, role) → checks role                                │ │
+│  └──────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                │
+│  ┌──────────────────────────────────────────────────────────────────────────┐ │
+│  │  Database Helpers (lines 399-689)                                        │ │
+│  │  - get_schools_for_children                                              │ │
+│  │  - create_pickup_request                                                 │ │
+│  │  - coordinate_cross_school_pickup                                        │ │
+│  │  - broadcast_delegate_authorization                                      │ │
+│  │  - get_authorized_delegates                                              │ │
+│  │  - broadcast_emergency                                                   │ │
+│  │  - get_school_pickups                                                    │ │
+│  │  - get_school_info                                                       │ │
+│  └──────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                │
+│  ┌──────────────────────────────────────────────────────────────────────────┐ │
+│  │  Widget Configuration (lines 287-343)                                    │ │
+│  │  - SCHOOL_DASHBOARD_WIDGET                                               │ │
+│  │  - MONITORING_DASHBOARD_WIDGET                                           │ │
+│  │  - _load_widget_html (caching)                                           │ │
+│  └──────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                │
+│  ┌──────────────────────────────────────────────────────────────────────────┐ │
+│  │  HTTP Endpoints (lines 1544-1576)                                        │ │
+│  │  - GET /health   → health_endpoint (health check)                        │ │
+│  │  - GET /metrics  → metrics_endpoint (Prometheus)                         │ │
+│  └──────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                │
+└─────────────┬────────────────────────────────────────────┬─────────────────────┘
+              │                                            │
+              │ Service Calls                              │ Monitoring
+              ▼                                            ▼
+┌────────────────────────────────────────────────────────────────────────────────┐
+│                       LAYER 3: BUSINESS LOGIC LAYER                            │
+│                            (Service Modules)                                   │
+├────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                │
+│  ┌─────────────────────────────────────┐  ┌───────────────────────────────┐  │
+│  │  Authentication Service             │  │  Monitoring Service           │  │
+│  │  /allobye_server_python/auth.py     │  │  /allobye_server_python/      │  │
+│  │                                     │  │  monitoring.py                │  │
+│  ├─────────────────────────────────────┤  ├───────────────────────────────┤  │
+│  │  Core Functions:                    │  │  Components:                  │  │
+│  │  - signup_user                      │  │  - StructuredLogger           │  │
+│  │  - login_user                       │  │  - MetricsCollector           │  │
+│  │  - logout_user                      │  │  - RequestTracer              │  │
+│  │  - reset_password_request           │  │  - MonitoringMiddleware       │  │
+│  │  - validate_session                 │  │  - AlertingConfig             │  │
+│  │  - get_user_profile                 │  │                               │  │
+│  │  - update_user_profile              │  │  Capabilities:                │  │
+│  │                                     │  │  - JSON structured logging    │  │
+│  │  Authorization Helpers:             │  │  - Tool metrics collection    │  │
+│  │  - verify_parent_owns_child         │  │  - Database query monitoring  │  │
+│  │  - verify_staff_at_school           │  │  - Prometheus export          │  │
+│  │  - link_child_to_parent             │  │  - Health checks              │  │
+│  │                                     │  │  - Alerting rules             │  │
+│  │  Data Model:                        │  │  - Request tracing (UUID)     │  │
+│  │  - UserProfile (dataclass)          │  │                               │  │
+│  │  - Exceptions:                      │  │  Metrics:                     │  │
+│  │    • AuthenticationError            │  │  - allobye_uptime_seconds     │  │
+│  │    • InvalidCredentialsError        │  │  - allobye_tool_calls_total   │  │
+│  │    • SessionExpiredError            │  │  - allobye_tool_latency_ms    │  │
+│  │                                     │  │  - allobye_db_queries_total   │  │
+│  │  Clients:                           │  │  - allobye_errors_total       │  │
+│  │  - get_supabase_client (ANON)       │  │                               │  │
+│  │  - get_supabase_admin (SERVICE)     │  │  Alerts:                      │  │
+│  │                                     │  │  - Error rate > 5%            │  │
+│  │  613 lines of code                  │  │  - Latency > 1000ms           │  │
+│  └─────────────────────────────────────┘  │  - DB failures >= 3           │  │
+│                                           │                               │  │
+│                                           │  753 lines of code            │  │
+│                                           └───────────────────────────────┘  │
+│                                                                                │
+│  ⚠️ Note: Authorization helpers (verify_*) should be in separate module       │
+│                                                                                │
+└─────────────────────────────────┬──────────────────────────────────────────────┘
+                                  │
+                                  │ Supabase SDK
+                                  │ (create_client)
+                                  ▼
+┌────────────────────────────────────────────────────────────────────────────────┐
+│                         LAYER 4: DATA ACCESS LAYER                             │
+│                         (PostgreSQL via Supabase)                              │
+│                         /allobye_server_python/schema.sql                      │
+├────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                │
+│  ┌──────────────────────────────────────────────────────────────────────────┐ │
+│  │  CORE TABLES (7 tables)                                                  │ │
+│  ├──────────────────────────────────────────────────────────────────────────┤ │
+│  │  - schools (id, name, address, timezone)                                 │ │
+│  │  - children (id, name, school_id, parent_email, medical_info)            │ │
+│  │  - delegates (id, email, name, permissions[], is_active)                 │ │
+│  │  - pickups (id, pickup_person_id, scheduled_time, status, eta_minutes)   │ │
+│  │  - emergencies (id, child_id, emergency_type, severity, context)         │ │
+│  └──────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                │
+│  ┌──────────────────────────────────────────────────────────────────────────┐ │
+│  │  JUNCTION TABLES (2 tables)                                              │ │
+│  ├──────────────────────────────────────────────────────────────────────────┤ │
+│  │  - pickup_children (pickup_id, child_id, checked_out, checked_out_at)    │ │
+│  │  - delegate_children (delegate_id, child_id, authorized_at, is_active)   │ │
+│  └──────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                │
+│  ┌──────────────────────────────────────────────────────────────────────────┐ │
+│  │  INDEXES (14 indexes)                                                    │ │
+│  ├──────────────────────────────────────────────────────────────────────────┤ │
+│  │  Performance:                                                            │ │
+│  │  - idx_pickups_status_scheduled_time (composite)                         │ │
+│  │  - idx_children_school_id                                                │ │
+│  │  - idx_delegates_email                                                   │ │
+│  │  - idx_emergencies_type_resolved                                         │ │
+│  │  + 10 more...                                                            │ │
+│  └──────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                │
+│  ┌──────────────────────────────────────────────────────────────────────────┐ │
+│  │  TRIGGERS (6 triggers)                                                   │ │
+│  ├──────────────────────────────────────────────────────────────────────────┤ │
+│  │  - update_*_updated_at → Auto-update updated_at column                   │ │
+│  │  - emergency_notification → pg_notify on emergency insert                │ │
+│  │  - pickup_status_cascade → Cascade status changes to children            │ │
+│  └──────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                │
+│  ┌──────────────────────────────────────────────────────────────────────────┐ │
+│  │  FUNCTIONS (3 utility functions)                                         │ │
+│  ├──────────────────────────────────────────────────────────────────────────┤ │
+│  │  - get_upcoming_pickups(school_id, hours_ahead)                          │ │
+│  │  - get_active_emergencies(school_id)                                     │ │
+│  │  - notify_emergency() → Trigger function                                 │ │
+│  └──────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                │
+│  ┌──────────────────────────────────────────────────────────────────────────┐ │
+│  │  ROW-LEVEL SECURITY (RLS) - 21 policies                                  │ │
+│  ├──────────────────────────────────────────────────────────────────────────┤ │
+│  │  Authorization Logic:                                                    │ │
+│  │  - Parents can view their own children                                   │ │
+│  │  - Delegates can view assigned pickups                                   │ │
+│  │  - School staff can view school data                                     │ │
+│  │  - Service role has full access                                          │ │
+│  │                                                                          │ │
+│  │  Policy Example:                                                         │ │
+│  │    CREATE POLICY "Parents can view their own children"                   │ │
+│  │      ON children FOR SELECT                                              │ │
+│  │      USING (parent_email = auth.jwt()->>'email');                        │ │
+│  └──────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                │
+│  ┌──────────────────────────────────────────────────────────────────────────┐ │
+│  │  REAL-TIME (PostgreSQL NOTIFY/LISTEN)                                    │ │
+│  ├──────────────────────────────────────────────────────────────────────────┤ │
+│  │  Channels:                                                               │ │
+│  │  - emergency_alert → Broadcast emergencies                               │ │
+│  │                                                                          │ │
+│  │  Supabase Realtime Publication:                                          │ │
+│  │  - ALTER PUBLICATION supabase_realtime ADD TABLE pickups;                │ │
+│  │  - ALTER PUBLICATION supabase_realtime ADD TABLE emergencies;            │ │
+│  └──────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                │
+│  ┌──────────────────────────────────────────────────────────────────────────┐ │
+│  │  SUPABASE AUTH                                                           │ │
+│  ├──────────────────────────────────────────────────────────────────────────┤ │
+│  │  - JWT generation and validation                                         │ │
+│  │  - Email/password authentication                                         │ │
+│  │  - Session management                                                    │ │
+│  │  - Password reset emails                                                 │ │
+│  └──────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                │
+└────────────────────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+                            CROSS-LAYER CONCERNS
+═══════════════════════════════════════════════════════════════════════════════
+
+┌────────────────────────────────────────────────────────────────────────────────┐
+│  AUTHENTICATION FLOW                                                           │
+├────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                │
+│  1. User enters credentials in AuthScreen (Layer 1)                           │
+│                     │                                                          │
+│  2. MCP tool call: auth-login (Layer 1 → Layer 2)                             │
+│                     │                                                          │
+│  3. _handle_auth_login validates via auth.py (Layer 2 → Layer 3)              │
+│                     │                                                          │
+│  4. Supabase Auth validates credentials (Layer 3 → Supabase)                  │
+│                     │                                                          │
+│  5. JWT access_token returned (Supabase → Layer 3 → Layer 2 → Layer 1)        │
+│                     │                                                          │
+│  6. Token stored in localStorage (Layer 1)                                    │
+│                     │                                                          │
+│  7. All subsequent tool calls include accessToken (Layer 1 → Layer 2)         │
+│                     │                                                          │
+│  8. get_current_user middleware validates JWT (Layer 2)                       │
+│                     │                                                          │
+│  9. RLS policies enforce authorization (Layer 4)                              │
+│                                                                                │
+└────────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────────┐
+│  REAL-TIME DATA FLOW                                                           │
+├────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                │
+│  Path 1: MCP Polling (30s interval)                                           │
+│  ────────────────────────────────                                             │
+│  Dashboard (L1) → school-dashboard-fetch (L2) → get_school_pickups (L2)       │
+│                   → Supabase query (L4) → Dashboard update (L1)               │
+│                                                                                │
+│  Path 2: Supabase Realtime (WebSocket)                                        │
+│  ────────────────────────────────────────                                     │
+│  Database INSERT/UPDATE (L4) → Realtime notification →                        │
+│  Dashboard subscription (L1) → UI update                                      │
+│                                                                                │
+│  ⚠️ Note: Path 2 bypasses application layer (direct L1 → L4)                  │
+│                                                                                │
+│  Path 3: PostgreSQL NOTIFY (for emergencies)                                  │
+│  ──────────────────────────────────────────                                   │
+│  Emergency INSERT (L4) → notify_emergency trigger (L4) →                      │
+│  pg_notify('emergency_alert') → Realtime → Dashboard (L1)                     │
+│                                                                                │
+└────────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────────┐
+│  MONITORING & OBSERVABILITY                                                    │
+├────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                │
+│  ┌────────────────────────────────────────────────────────────────────────┐  │
+│  │  Tool Call Lifecycle                                                   │  │
+│  ├────────────────────────────────────────────────────────────────────────┤  │
+│  │  1. Request arrives → _call_tool_request_monitored                     │  │
+│  │  2. metrics_collector.record_tool_call (start timer)                   │  │
+│  │  3. logger.info("Tool call started")                                   │  │
+│  │  4. Execute handler (_handle_*)                                        │  │
+│  │  5. Capture result or error                                            │  │
+│  │  6. metrics_collector.record_tool_call (end timer, latency, success)   │  │
+│  │  7. logger.info("Tool call completed", latency_ms=X)                   │  │
+│  │  8. Check alerting rules (error rate, latency)                         │  │
+│  └────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                │
+│  ┌────────────────────────────────────────────────────────────────────────┐  │
+│  │  Database Query Lifecycle                                              │  │
+│  ├────────────────────────────────────────────────────────────────────────┤  │
+│  │  1. with monitoring_middleware.monitor_db_query("query_type"):         │  │
+│  │  2. logger.debug("Database query started")                             │  │
+│  │  3. Execute Supabase query                                             │  │
+│  │  4. Capture latency and errors                                         │  │
+│  │  5. db_metrics.record_db_query(latency_ms, success)                    │  │
+│  │  6. Check DB failure threshold                                         │  │
+│  └────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                │
+│  ┌────────────────────────────────────────────────────────────────────────┐  │
+│  │  Metrics Export                                                        │  │
+│  ├────────────────────────────────────────────────────────────────────────┤  │
+│  │  GET /metrics → metrics_collector.export_prometheus()                  │  │
+│  │                                                                        │  │
+│  │  Output (Prometheus format):                                           │  │
+│  │    allobye_uptime_seconds 3600.5                                       │  │
+│  │    allobye_tool_calls_total{tool="pickup-schedule-create"} 42          │  │
+│  │    allobye_tool_latency_ms{tool="pickup-schedule-create"} 150.0        │  │
+│  └────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                │
+└────────────────────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+                              DEPENDENCY GRAPH
+═══════════════════════════════════════════════════════════════════════════════
+
+Layer 1 (Frontend)
+    │
+    ├─ MCP Tools ───────────────────────────────┐
+    │                                           │
+    └─ Supabase Realtime (WebSocket) ────┐     │
+                                          │     │
+Layer 2 (MCP Server)                      │     │
+                 │                        │     │
+                 ├─ auth.py ──────────────┼─────┘
+                 │                        │
+                 ├─ monitoring.py         │
+                 │                        │
+                 └─ Database helpers ─────┼────┐
+                                          │    │
+Layer 3 (Services)                        │    │
+       │                                  │    │
+       ├─ Supabase Client (ANON) ────────┘    │
+       │                                       │
+       └─ Supabase Client (SERVICE) ──────────┘
+                                               │
+Layer 4 (Database)                             │
+    PostgreSQL + Supabase Auth + Realtime ◄────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+                           LAYER RESPONSIBILITIES
+═══════════════════════════════════════════════════════════════════════════════
+
+Layer 1: PRESENTATION
+  ✅ Render UI components
+  ✅ Handle user interactions
+  ✅ Manage local state (useState)
+  ✅ Call MCP tools
+  ✅ Subscribe to real-time updates
+  ⚠️ Direct database access (should go through Layer 2)
+
+Layer 2: APPLICATION
+  ✅ MCP protocol implementation
+  ✅ Request orchestration
+  ✅ Input validation (Pydantic)
+  ✅ Authentication middleware
+  ✅ Widget resource serving
+  ⚠️ Contains database helpers (should be in Layer 3)
+  ⚠️ Too many responsibilities (1583 lines)
+
+Layer 3: BUSINESS LOGIC
+  ✅ Authentication service
+  ✅ Monitoring service
+  ⚠️ Authorization mixed with authentication
+  ⚠️ Missing: Repository pattern, DI container
+
+Layer 4: DATA
+  ✅ Data persistence
+  ✅ Data integrity (FK, constraints)
+  ✅ Authorization (RLS)
+  ✅ Real-time events (NOTIFY)
+  ⚠️ Business logic in triggers
+  ⚠️ Complex authorization in RLS policies
+
+═══════════════════════════════════════════════════════════════════════════════
+                                  NOTES
+═══════════════════════════════════════════════════════════════════════════════
+
+Total Lines of Code:
+  - main.py:        1,583 lines (⚠️ too large)
+  - auth.py:          613 lines
+  - monitoring.py:    753 lines
+  - schema.sql:       596 lines
+  - Frontend:      ~2,800 lines (well-decomposed)
+
+Files: 30 total across Python, React, SQL, and documentation
+
+Architecture Style: Layered + Event-Driven + MCP
+
+Strengths:
+  ✅ Clean MCP integration
+  ✅ Comprehensive monitoring
+  ✅ Strong security (JWT + RLS)
+  ✅ Real-time capabilities
+
+Weaknesses:
+  ⚠️ Monolithic main.py (God Object)
+  ⚠️ Frontend-database coupling
+  ⚠️ Missing abstraction layers
+  ⚠️ Business logic split between app and DB
+
+Overall Assessment: Well-architected with refactoring opportunities
+
+═══════════════════════════════════════════════════════════════════════════════

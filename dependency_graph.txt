@@ -1,0 +1,208 @@
+╔═══════════════════════════════════════════════════════════════════════════════════╗
+║                    ALLOBYE DEPENDENCY GRAPH - ASCII VISUALIZATION                 ║
+║                        Système de coordination de ramassage scolaire              ║
+╚═══════════════════════════════════════════════════════════════════════════════════╝
+
+═══════════════════════════════════════════════════════════════════════════════════
+PYTHON BACKEND - allobye_server_python/
+═══════════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ main.py (CENTRAL MODULE - Application Entry Point)                             │
+│ Role: MCP Server orchestrator, tool handlers, HTTP endpoints                   │
+└─────────────────────────────────────────────────────────────────────────────────┘
+      │
+      ├──[INTERNAL]──► monitoring.py (Observability system)
+      │                     │
+      │                     └──[STDLIB ONLY]──► logging, json, time, collections,
+      │                                          contextlib, dataclasses, datetime,
+      │                                          functools, typing, uuid
+      │
+      ├──[INTERNAL]──► auth.py (Authentication module)
+      │                     │
+      │                     ├──[EXTERNAL-CRITICAL]──► supabase (Auth & DB)
+      │                     └──[EXTERNAL]──► dotenv (Environment config)
+      │
+      ├──[EXTERNAL-CRITICAL]──► mcp.types (MCP protocol types)
+      ├──[EXTERNAL-CRITICAL]──► fastmcp (MCP server framework)
+      ├──[EXTERNAL-CRITICAL]──► pydantic (Data validation)
+      ├──[EXTERNAL-CRITICAL]──► supabase (Database client)
+      ├──[EXTERNAL-CRITICAL]──► uvicorn (ASGI server)
+      ├──[EXTERNAL-CRITICAL]──► starlette (ASGI framework)
+      └──[EXTERNAL]──► dotenv (Environment variables)
+
+
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ test_monitoring.py (TEST SCRIPT)                                                │
+│ Role: Validation and demonstration of monitoring features                      │
+└─────────────────────────────────────────────────────────────────────────────────┘
+      │
+      ├──[INTERNAL]──► monitoring.py
+      └──[STDLIB]──► asyncio, time
+
+
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ apply_schema.py (DATABASE SCRIPT - Standalone)                                  │
+│ Role: Schema migration and seed data application                               │
+└─────────────────────────────────────────────────────────────────────────────────┘
+      │
+      ├──[EXTERNAL-CRITICAL]──► psycopg2 (PostgreSQL adapter)
+      ├──[EXTERNAL]──► dotenv (Environment config)
+      └──[STDLIB]──► argparse, os, sys, pathlib, typing
+
+
+═══════════════════════════════════════════════════════════════════════════════════
+REACT FRONTEND - src/allobye-dashboard/
+═══════════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ index.jsx (ENTRY POINT)                                                         │
+│ Role: App initialization, authentication flow management                       │
+└─────────────────────────────────────────────────────────────────────────────────┘
+      │
+      ├──[EXTERNAL-CRITICAL]──► react (UI framework)
+      ├──[EXTERNAL-CRITICAL]──► react-dom/client (DOM rendering)
+      ├──[INTERNAL]──► dashboard.jsx (Main dashboard component)
+      └──[INTERNAL]──► auth-screen.jsx (Authentication UI)
+
+
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ dashboard.jsx (CENTRAL COMPONENT - Pickup Queue Display)                       │
+│ Role: Real-time pickup coordination, Supabase subscriptions                    │
+└─────────────────────────────────────────────────────────────────────────────────┘
+      │
+      ├──[EXTERNAL-CRITICAL]──► react (Hooks: useState, useEffect)
+      ├──[SHARED-CRITICAL]──► ../use-openai-global (MCP tool integration)
+      ├──[SHARED]──► ../use-widget-state (State persistence)
+      ├──[EXTERNAL-CRITICAL]──► @supabase/supabase-js (Real-time DB)
+      ├──[INTERNAL]──► pickup-card.jsx (Pickup display component)
+      └──[INTERNAL]──► emergency-alert.jsx (Alert UI component)
+
+
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ pickup-card.jsx, emergency-alert.jsx (LEAF COMPONENTS)                         │
+│ Role: Pure presentation components                                             │
+└─────────────────────────────────────────────────────────────────────────────────┘
+      │
+      └──[EXTERNAL-CRITICAL]──► react
+
+
+═══════════════════════════════════════════════════════════════════════════════════
+REACT FRONTEND - src/allobye-monitoring/
+═══════════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ index.jsx (ENTRY POINT)                                                         │
+│ Role: Monitoring dashboard initialization                                      │
+└─────────────────────────────────────────────────────────────────────────────────┘
+      │
+      ├──[EXTERNAL-CRITICAL]──► react (UI framework)
+      ├──[EXTERNAL-CRITICAL]──► react-dom/client (DOM rendering)
+      └──[INTERNAL]──► dashboard.jsx (Main monitoring dashboard)
+
+
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ dashboard.jsx (CENTRAL COMPONENT - Observability Dashboard)                    │
+│ Role: Real-time metrics display, auto-refresh, health monitoring               │
+└─────────────────────────────────────────────────────────────────────────────────┘
+      │
+      ├──[EXTERNAL-CRITICAL]──► react (Hooks: useState, useEffect)
+      ├──[INTERNAL]──► tool-usage-chart.jsx (Bar chart visualization)
+      ├──[INTERNAL]──► errors-list.jsx (Error log display)
+      ├──[INTERNAL]──► metrics-grid.jsx (Key metrics grid)
+      ├──[INTERNAL]──► alerts-panel.jsx (Active alerts)
+      └──[INTERNAL]──► system-health.jsx (Health status)
+
+
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ tool-usage-chart.jsx, metrics-grid.jsx, errors-list.jsx, etc. (LEAF COMPONENTS)│
+│ Role: Pure presentation components for metrics visualization                   │
+└─────────────────────────────────────────────────────────────────────────────────┘
+      │
+      └──[EXTERNAL-CRITICAL]──► react
+
+
+═══════════════════════════════════════════════════════════════════════════════════
+SHARED UTILITIES (Assumed from imports)
+═══════════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ use-openai-global.jsx (CRITICAL SHARED HOOK)                                   │
+│ Role: MCP tool invocation bridge, ChatGPT Apps SDK integration                 │
+└─────────────────────────────────────────────────────────────────────────────────┘
+      │
+      └──[EXTERNAL-CRITICAL]──► react
+
+
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ use-widget-state.jsx (SHARED HOOK)                                             │
+│ Role: Widget state persistence across sessions                                 │
+└─────────────────────────────────────────────────────────────────────────────────┘
+      │
+      └──[EXTERNAL-CRITICAL]──► react
+
+
+═══════════════════════════════════════════════════════════════════════════════════
+EXTERNAL DEPENDENCIES SUMMARY
+═══════════════════════════════════════════════════════════════════════════════════
+
+CRITICAL DEPENDENCIES (Breaking = Complete System Failure):
+  Python:
+    - fastmcp (>=0.8.0)          ► MCP protocol implementation
+    - mcp (>=1.3.0)              ► MCP types and interfaces
+    - uvicorn (>=0.32.1)         ► ASGI HTTP server
+    - starlette (>=0.41.3)       ► ASGI framework
+    - pydantic (>=2.10.3)        ► Input validation
+    - supabase (>=2.10.0)        ► Database and auth
+    - psycopg2-binary (>=2.9.9)  ► PostgreSQL adapter
+
+  React:
+    - react (^19.1.1)            ► UI framework
+    - react-dom (^19.1.1)        ► DOM rendering
+    - @supabase/supabase-js (^2.48.1) ► Real-time subscriptions
+
+NON-CRITICAL DEPENDENCIES (Breaking = Feature Degradation):
+    - dotenv (>=1.0.0)           ► Environment config (can hardcode)
+    - httpx (>=0.28.1)           ► HTTP client (fallback available)
+
+═══════════════════════════════════════════════════════════════════════════════════
+DEPENDENCY PATTERNS & CHARACTERISTICS
+═══════════════════════════════════════════════════════════════════════════════════
+
+CIRCULAR DEPENDENCIES: ✓ NONE DETECTED
+
+COUPLING ANALYSIS:
+  [STRONG COUPLING]
+    - main.py ↔ monitoring.py    (Tight integration for observability)
+    - main.py ↔ auth.py          (Tight integration for security)
+    - dashboard.jsx ↔ use-openai-global (Critical for MCP communication)
+
+  [WEAK COUPLING]
+    - monitoring.py              (Only stdlib, highly portable)
+    - All leaf components        (Pure presentation, no business logic)
+
+MODULE CLASSIFICATION:
+  [CENTRAL MODULES - High In-Degree]
+    - main.py                    (Orchestrator, imported by none)
+    - dashboard.jsx (both apps)  (Compose multiple sub-components)
+
+  [LEAF MODULES - Zero Out-Degree]
+    - monitoring.py              (Imported by main.py, test_monitoring.py)
+    - auth.py                    (Imported by main.py only)
+    - All presentation components
+
+  [STANDALONE SCRIPTS]
+    - apply_schema.py            (Database migration tool)
+    - test_monitoring.py         (Test harness)
+
+DEPENDENCY DEPTH:
+  Max Depth: 3 levels
+    Example: main.py → monitoring.py → [stdlib modules]
+             index.jsx → dashboard.jsx → pickup-card.jsx
+
+DEPENDENCY BREADTH:
+  Max Breadth: 10 immediate dependencies (main.py)
+
+═══════════════════════════════════════════════════════════════════════════════════
+END OF DEPENDENCY GRAPH
+═══════════════════════════════════════════════════════════════════════════════════

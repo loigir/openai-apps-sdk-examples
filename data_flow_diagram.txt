@@ -1,0 +1,835 @@
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║                  ALLOBYE DATA FLOW DIAGRAMS - ASCII VISUALIZATION             ║
+║                        Traceur de Flux de Données - Phase 1                   ║
+║                              Date: 2025-11-04                                  ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+
+═══════════════════════════════════════════════════════════════════════════════
+1. AUTH FLOW - Authentication & Authorization Data Flow
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          SIGNUP FLOW                                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+[React AuthScreen]                                [Python MCP Server]
+     │                                                     │
+     │ 1. User fills form                                │
+     │    email, password, name, role                    │
+     │                                                     │
+     │ 2. window.openai.callTool("auth-signup", {...})  │
+     │────────────────────────────────────────────────►  │
+     │                                                     │
+     │                                            3. Validate input (Pydantic)
+     │                                                     │
+     │                                            4. auth.signup_user()
+     │                                                     │
+     │                                          ┌──────────▼──────────┐
+     │                                          │   Supabase Auth     │
+     │                                          │  (Email/Password)   │
+     │                                          └──────────┬──────────┘
+     │                                                     │
+     │                                          5. Create user record
+     │                                                     │
+     │                                          ┌──────────▼──────────┐
+     │                                          │  PostgreSQL         │
+     │                                          │  INSERT INTO        │
+     │                                          │  user_profiles      │
+     │                                          └──────────┬──────────┘
+     │                                                     │
+     │                                          6. Return session
+     │                                                     │
+     │  ◄────────────────────────────────────────────────│
+     │    { user: {id, email, email_verified},           │
+     │      session: {access_token, refresh_token} }     │
+     │                                                     │
+     │ 7. localStorage.setItem("allobye_token", token)   │
+     │    localStorage.setItem("allobye_user", user)     │
+     │                                                     │
+     │ 8. Call auth-profile to get full profile          │
+     │────────────────────────────────────────────────►  │
+     │                                                     │
+     │  ◄────────────────────────────────────────────────│
+     │    { profile: {id, email, name, role,             │
+     │                schools: [], children: []} }       │
+     │                                                     │
+     │ 9. setState({ isAuthenticated: true })            │
+     │                                                     │
+     ▼                                                     ▼
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          LOGIN FLOW                                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+[React AuthScreen]                                [Python MCP Server]
+     │                                                     │
+     │ 1. User enters credentials                         │
+     │                                                     │
+     │ 2. window.openai.callTool("auth-login", {...})   │
+     │────────────────────────────────────────────────►  │
+     │                                                     │
+     │                                            3. auth.login_user()
+     │                                                     │
+     │                                          ┌──────────▼──────────┐
+     │                                          │   Supabase Auth     │
+     │                                          │ sign_in_with_       │
+     │                                          │   password()        │
+     │                                          └──────────┬──────────┘
+     │                                                     │
+     │                                          4. Validate credentials
+     │                                          5. Fetch user_profile
+     │                                                     │
+     │                                          ┌──────────▼──────────┐
+     │                                          │  PostgreSQL Query   │
+     │                                          │  SELECT * FROM      │
+     │                                          │  user_profiles      │
+     │                                          │  + user_schools     │
+     │                                          │  + parent_children  │
+     │                                          └──────────┬──────────┘
+     │                                                     │
+     │  ◄────────────────────────────────────────────────│
+     │    { user: {...},                                  │
+     │      session: {access_token, refresh_token},      │
+     │      profile: {role, schools, children} }         │
+     │                                                     │
+     │ 6. Store in localStorage                           │
+     │ 7. Update React state                              │
+     │                                                     │
+     ▼                                                     ▼
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    JWT VALIDATION FLOW (Middleware)                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+[Every Tool Call]                                 [Python MCP Server]
+     │                                                     │
+     │ Tool call with accessToken param                   │
+     │────────────────────────────────────────────────►  │
+     │                                                     │
+     │                                      1. get_current_user(arguments)
+     │                                         Extract access_token from args
+     │                                                     │
+     │                                      2. validate_session(access_token)
+     │                                                     │
+     │                                          ┌──────────▼──────────┐
+     │                                          │   Supabase Auth     │
+     │                                          │  set_session()      │
+     │                                          │  get_user()         │
+     │                                          └──────────┬──────────┘
+     │                                                     │
+     │                                          3. JWT decoded & verified
+     │                                             Extract user claims
+     │                                                     │
+     │                                      4. get_user_profile(user_id)
+     │                                                     │
+     │                                          ┌──────────▼──────────┐
+     │                                          │  PostgreSQL Query   │
+     │                                          │  With RLS policies  │
+     │                                          └──────────┬──────────┘
+     │                                                     │
+     │                                      5. Return UserProfile object
+     │                                         {id, email, role, ...}
+     │                                                     │
+     │                                      6. require_auth(user, role)
+     │                                         Check role match
+     │                                                     │
+     │                                      7. Execute business logic
+     │                                                     │
+     │  ◄────────────────────────────────────────────────│
+     │    Tool result                                     │
+     │                                                     │
+     ▼                                                     ▼
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    RLS (ROW LEVEL SECURITY) FLOW                            │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+[MCP Server Query]                                [PostgreSQL RLS]
+     │                                                     │
+     │ supabase.table("pickups").select("*")             │
+     │────────────────────────────────────────────────►  │
+     │                                                     │
+     │                                      1. Extract JWT from session
+     │                                         auth.jwt()->>'email'
+     │                                         auth.jwt()->>'role'
+     │                                                     │
+     │                                      2. Apply RLS policy:
+     │                                         "Parents can view their
+     │                                          children's pickups"
+     │                                                     │
+     │                                      3. Rewrite query with USING clause:
+     │                                         SELECT * FROM pickups
+     │                                         WHERE EXISTS (
+     │                                           SELECT 1 FROM pickup_children
+     │                                           JOIN children ON ...
+     │                                           WHERE children.parent_email =
+     │                                                 auth.jwt()->>'email'
+     │                                         )
+     │                                                     │
+     │                                      4. Execute filtered query
+     │                                                     │
+     │  ◄────────────────────────────────────────────────│
+     │    Only authorized rows returned                   │
+     │                                                     │
+     ▼                                                     ▼
+
+
+═══════════════════════════════════════════════════════════════════════════════
+2. PICKUP FLOW - Pickup Scheduling & Coordination Data Flow
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│              PICKUP CREATION FLOW (Single School)                           │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+[Parent ChatGPT]                [MCP Server]                [PostgreSQL]
+     │                               │                             │
+     │ 1. "Schedule pickup           │                             │
+     │     Sophie at 3pm"            │                             │
+     │                               │                             │
+     │ 2. Call pickup-schedule-      │                             │
+     │    create tool                │                             │
+     │──────────────────────────►   │                             │
+     │    {childIds: ["child_1"],    │                             │
+     │     pickupPersonId: "del_1",  │                             │
+     │     scheduledTime: "15:00"}   │                             │
+     │                               │                             │
+     │                        3. Validate input (Pydantic)         │
+     │                        4. Authenticate user                 │
+     │                        5. verify_parent_owns_child()        │
+     │                               │                             │
+     │                               │ 6. Query parent_children    │
+     │                               │──────────────────────────► │
+     │                               │    WHERE parent_id = user.id│
+     │                               │    AND child_id = child_1   │
+     │                               │                             │
+     │                               │ ◄──────────────────────────│
+     │                               │    {exists: true}           │
+     │                               │                             │
+     │                        7. get_schools_for_children()        │
+     │                               │──────────────────────────► │
+     │                               │    SELECT school_id, schools│
+     │                               │    FROM children WHERE id=..│
+     │                               │                             │
+     │                               │ ◄──────────────────────────│
+     │                               │    [{id: "school_1", ...}]  │
+     │                               │                             │
+     │                        8. create_pickup_request()           │
+     │                               │                             │
+     │                               │ 9. INSERT INTO pickups      │
+     │                               │──────────────────────────► │
+     │                               │    {id, pickup_person_id,   │
+     │                               │     scheduled_time,         │
+     │                               │     status: "confirmed"}    │
+     │                               │                             │
+     │                               │                    10. TRIGGER:
+     │                               │                       update_updated_at
+     │                               │                             │
+     │                               │ 11. INSERT INTO             │
+     │                               │     pickup_children         │
+     │                               │──────────────────────────► │
+     │                               │    {pickup_id, child_id}    │
+     │                               │                             │
+     │                               │ ◄──────────────────────────│
+     │                               │    {pickup_record}          │
+     │                               │                             │
+     │  ◄───────────────────────────│                             │
+     │    {pickup_id, status,        │                             │
+     │     scheduled_time}           │                             │
+     │                               │                             │
+     ▼                               ▼                             ▼
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│          PICKUP CREATION FLOW (Multi-School A2A Simulation)                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+[Parent ChatGPT]                [MCP Server]                [PostgreSQL]
+     │                               │                             │
+     │ "Pick up Sophie at            │                             │
+     │  École A and Thomas at        │                             │
+     │  École B, both at 3pm"        │                             │
+     │──────────────────────────►   │                             │
+     │    {childIds: ["c1", "c2"],   │                             │
+     │     ...}                      │                             │
+     │                               │                             │
+     │                        1. get_schools_for_children()        │
+     │                               │──────────────────────────► │
+     │                               │    SELECT DISTINCT schools  │
+     │                               │                             │
+     │                               │ ◄──────────────────────────│
+     │                               │    [{school_a}, {school_b}] │
+     │                               │                             │
+     │                        2. Detect multi-school               │
+     │                               │                             │
+     │                        3. coordinate_cross_school_pickup()  │
+     │                               │                             │
+     │                        4. Create single pickup record       │
+     │                               │──────────────────────────► │
+     │                               │    INSERT INTO pickups      │
+     │                               │                             │
+     │                        5. Link both children                │
+     │                               │──────────────────────────► │
+     │                               │    INSERT pickup_children   │
+     │                               │    (2 rows)                 │
+     │                               │                             │
+     │                        6. Simulate A2A broadcast            │
+     │                           [In real impl: message bus]       │
+     │                               │                             │
+     │                        7. Build A2A message trace           │
+     │                           a2a_messages: [                   │
+     │                             {school_id: s1, status: ok},    │
+     │                             {school_id: s2, status: ok}     │
+     │                           ]                                 │
+     │                               │                             │
+     │  ◄───────────────────────────│                             │
+     │    {pickup_id,                │                             │
+     │     schools_affected: [A, B], │                             │
+     │     a2a_messages: [...]}      │                             │
+     │                               │                             │
+     ▼                               ▼                             ▼
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│              REAL-TIME PICKUP UPDATE FLOW (Supabase Realtime)               │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+[PostgreSQL]          [Supabase Realtime]        [React Dashboard]
+     │                        │                           │
+     │ 1. UPDATE pickups      │                           │
+     │    SET status='in_     │                           │
+     │    progress'           │                           │
+     │    WHERE id=pickup_1   │                           │
+     │                        │                           │
+     │ 2. TRIGGER: update_    │                           │
+     │    updated_at()        │                           │
+     │    (sets updated_at)   │                           │
+     │                        │                           │
+     │ 3. Detect postgres_    │                           │
+     │    changes event       │                           │
+     │───────────────────►   │                           │
+     │    {event: UPDATE,     │                           │
+     │     table: pickups,    │                           │
+     │     new: {...}}        │                           │
+     │                        │                           │
+     │                        │ 4. Filter by school_id    │
+     │                        │    (subscription filter)  │
+     │                        │                           │
+     │                        │ 5. Push via WebSocket     │
+     │                        │──────────────────────►   │
+     │                        │    {eventType: "UPDATE",  │
+     │                        │     new: pickup_record}   │
+     │                        │                           │
+     │                        │                  6. Handle in useEffect:
+     │                        │                     setRealtimePickups(prev =>
+     │                        │                       [...prev, payload.new])
+     │                        │                           │
+     │                        │                  7. React re-render
+     │                        │                     PickupCard updates UI
+     │                        │                           │
+     ▼                        ▼                           ▼
+
+
+═══════════════════════════════════════════════════════════════════════════════
+3. EMERGENCY FLOW - Emergency Declaration & Cascade Notification
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                   EMERGENCY DECLARATION FLOW                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+[Parent ChatGPT]      [MCP Server]        [PostgreSQL]         [React Dashboard]
+     │                     │                     │                      │
+     │ 1. "Emergency:      │                     │                      │
+     │     Sophie is       │                     │                      │
+     │     sick, cancel    │                     │                      │
+     │     pickup"         │                     │                      │
+     │                     │                     │                      │
+     │ 2. emergency-       │                     │                      │
+     │    declare tool     │                     │                      │
+     │────────────────►   │                     │                      │
+     │    {childId,        │                     │                      │
+     │     type: "illness",│                     │                      │
+     │     context: "..."}│                     │                      │
+     │                     │                     │                      │
+     │              3. Authenticate & authorize  │                      │
+     │              4. verify_parent_owns_child()│                      │
+     │                     │                     │                      │
+     │              5. get_authorized_delegates()│                      │
+     │                     │────────────────►   │                      │
+     │                     │    SELECT delegates │                      │
+     │                     │    FROM delegate_   │                      │
+     │                     │    children         │                      │
+     │                     │                     │                      │
+     │                     │ ◄──────────────────│                      │
+     │                     │    [{del_1}, ...]   │                      │
+     │                     │                     │                      │
+     │              6. get_schools_for_children()│                      │
+     │                     │────────────────►   │                      │
+     │                     │                     │                      │
+     │                     │ ◄──────────────────│                      │
+     │                     │    [{school_1}]     │                      │
+     │                     │                     │                      │
+     │              7. broadcast_emergency()     │                      │
+     │                     │                     │                      │
+     │                     │ 8. INSERT INTO      │                      │
+     │                     │    emergencies      │                      │
+     │                     │────────────────►   │                      │
+     │                     │    {id, child_id,   │                      │
+     │                     │     emergency_type, │                      │
+     │                     │     context,        │                      │
+     │                     │     severity}       │                      │
+     │                     │                     │                      │
+     │                     │                9. TRIGGER:                 │
+     │                     │                   notify_emergency()       │
+     │                     │                   PERFORM pg_notify(       │
+     │                     │                     'emergency_alert', ... │
+     │                     │                   )                        │
+     │                     │                     │                      │
+     │                     │                10. Realtime broadcast      │
+     │                     │                     │──────────────────►  │
+     │                     │                     │    {emergency_id,    │
+     │                     │                     │     child_id,        │
+     │                     │                     │     type, context}   │
+     │                     │                     │                      │
+     │                     │                     │           11. setState({
+     │                     │                     │                 alert: {...}
+     │                     │                     │               })
+     │                     │                     │                      │
+     │                     │                     │           12. Render
+     │                     │                     │               EmergencyAlert
+     │                     │                     │               Banner
+     │                     │                     │                      │
+     │                     │ ◄──────────────────│                      │
+     │                     │    {emergency_id}   │                      │
+     │                     │                     │                      │
+     │              13. Build cascade trace      │                      │
+     │                  a2a_trace: [             │                      │
+     │                    {type: "delegate_      │                      │
+     │                     notify", count: 3},   │                      │
+     │                    {type: "school_notify",│                      │
+     │                     count: 1}             │                      │
+     │                  ]                        │                      │
+     │                     │                     │                      │
+     │  ◄─────────────────│                     │                      │
+     │    {emergency_id,   │                     │                      │
+     │     notified_count, │                     │                      │
+     │     a2a_trace}      │                     │                      │
+     │                     │                     │                      │
+     ▼                     ▼                     ▼                      ▼
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                   POSTGRESQL NOTIFY/LISTEN FLOW                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+[PostgreSQL Trigger]          [PostgreSQL Channel]        [External Listeners]
+     │                                  │                           │
+     │ 1. INSERT INTO emergencies       │                           │
+     │                                  │                           │
+     │ 2. TRIGGER notify_emergency()    │                           │
+     │    AFTER INSERT                  │                           │
+     │                                  │                           │
+     │ 3. Build JSON payload:           │                           │
+     │    {emergency_id, child_id,      │                           │
+     │     school_id, school_name,      │                           │
+     │     type, severity, context}     │                           │
+     │                                  │                           │
+     │ 4. PERFORM pg_notify()           │                           │
+     │──────────────────────────────►  │                           │
+     │    ('emergency_alert', payload)  │                           │
+     │                                  │                           │
+     │                                  │ 5. Broadcast to all       │
+     │                                  │    LISTEN subscribers     │
+     │                                  │──────────────────────►   │
+     │                                  │                           │
+     │                                  │                  6. Process notification
+     │                                  │                     (Email, SMS, Push,
+     │                                  │                      Slack, etc.)
+     │                                  │                           │
+     ▼                                  ▼                           ▼
+
+
+═══════════════════════════════════════════════════════════════════════════════
+4. MONITORING FLOW - Metrics Collection & Dashboard Display
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                   METRICS COLLECTION FLOW                                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+[Tool Call Lifecycle]         [MonitoringMiddleware]       [MetricsCollector]
+     │                                │                            │
+     │ 1. Client calls tool           │                            │
+     │    e.g. pickup-schedule-       │                            │
+     │    create                      │                            │
+     │                                │                            │
+     │ 2. Request enters MCP server   │                            │
+     │──────────────────────────►    │                            │
+     │                                │                            │
+     │                         3. Start trace                      │
+     │                            trace_id = uuid4()               │
+     │                            logger.set_context(trace_id)     │
+     │                                │                            │
+     │                         4. metrics.increment_requests()     │
+     │                                │───────────────────────►   │
+     │                                │                            │
+     │                                │                   5. total_requests++
+     │                                │                      active_connections++
+     │                                │                            │
+     │                         6. start_time = time.time()         │
+     │                                │                            │
+     │                         7. Execute tool handler             │
+     │                            await _handle_pickup_schedule()  │
+     │                                │                            │
+     │                         8. DB query monitoring              │
+     │                            monitor_db_query() context mgr   │
+     │                                │                            │
+     │                                │                   9. Record DB metrics
+     │                                │                      query_count++
+     │                                │                      latency_ms
+     │                                │                            │
+     │                         10. Tool execution completes        │
+     │                             latency_ms = end - start        │
+     │                             success = True/False            │
+     │                                │                            │
+     │                         11. Record tool call                │
+     │                                │───────────────────────►   │
+     │                                │    (tool_name, latency,    │
+     │                                │     success, error)        │
+     │                                │                            │
+     │                                │                   12. Update ToolMetrics
+     │                                │                       call_count++
+     │                                │                       total_latency +=
+     │                                │                       min/max latency
+     │                                │                       error_count++
+     │                                │                            │
+     │                                │                   13. Check alerts
+     │                                │                       if error_rate > 5%
+     │                                │                       if latency > 1000ms
+     │                                │                       Add to _alerts[]
+     │                                │                            │
+     │                         14. End trace                       │
+     │                             logger.clear_context()          │
+     │                             metrics.decrement_connections() │
+     │                                │                            │
+     │  ◄────────────────────────────│                            │
+     │    Tool result                 │                            │
+     │                                │                            │
+     ▼                                ▼                            ▼
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│             MONITORING DASHBOARD DATA FLOW                                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+[Client Request]     [MCP Tool Handler]      [MetricsCollector]   [React Dashboard]
+     │                      │                         │                    │
+     │ 1. Call monitoring-  │                         │                    │
+     │    dashboard-fetch   │                         │                    │
+     │─────────────────►   │                         │                    │
+     │                      │                         │                    │
+     │              2. _handle_monitoring_dashboard() │                    │
+     │                      │                         │                    │
+     │              3. Get dashboard data             │                    │
+     │                      │────────────────────►   │                    │
+     │                      │    get_dashboard_data() │                    │
+     │                      │                         │                    │
+     │                      │                4. Aggregate metrics          │
+     │                      │                   - uptime_seconds            │
+     │                      │                   - total_requests            │
+     │                      │                   - overall_error_rate        │
+     │                      │                   - overall_avg_latency       │
+     │                      │                   - top_tools (sorted)        │
+     │                      │                   - recent_errors[-20:]       │
+     │                      │                   - recent_requests[-50:]     │
+     │                      │                   - alerts                    │
+     │                      │                   - database metrics          │
+     │                      │                   - tool_details (all tools)  │
+     │                      │                         │                    │
+     │                      │ ◄───────────────────────│                    │
+     │                      │    {dashboard_data_dict}│                    │
+     │                      │                         │                    │
+     │              5. Create widget resource         │                    │
+     │                 (embedded HTML)                │                    │
+     │                      │                         │                    │
+     │              6. Return CallToolResult          │                    │
+     │  ◄──────────────────│                         │                    │
+     │    {structuredContent: {...},                 │                    │
+     │     _meta: {                                   │                    │
+     │       openai.com/widget: {...},               │                    │
+     │       dashboard_data: {...}                   │                    │
+     │     }}                                         │                    │
+     │                      │                         │                    │
+     │ 7. ChatGPT renders widget                     │                    │
+     │────────────────────────────────────────────────────────────────►  │
+     │                      │                         │                    │
+     │                      │                         │         8. React loads
+     │                      │                         │            useEffect() ->
+     │                      │                         │            window.__ALLOBYE
+     │                      │                         │            _MONITORING_DATA
+     │                      │                         │                    │
+     │                      │                         │         9. setState(data)
+     │                      │                         │                    │
+     │                      │                         │        10. Render components
+     │                      │                         │            - SystemHealth
+     │                      │                         │            - MetricsGrid
+     │                      │                         │            - ToolUsageChart
+     │                      │                         │            - ErrorsList
+     │                      │                         │            - AlertsPanel
+     │                      │                         │                    │
+     │                      │                         │        11. Auto-refresh
+     │                      │                         │            setInterval(5s)
+     │                      │                         │                    │
+     ▼                      ▼                         ▼                    ▼
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                   PROMETHEUS METRICS EXPORT                                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+[Prometheus Scraper]        [HTTP /metrics Endpoint]      [MetricsCollector]
+     │                               │                            │
+     │ 1. HTTP GET /metrics          │                            │
+     │──────────────────────────►   │                            │
+     │                               │                            │
+     │                        2. metrics_endpoint()               │
+     │                               │                            │
+     │                        3. Request metrics export           │
+     │                               │───────────────────────►   │
+     │                               │   export_prometheus()      │
+     │                               │                            │
+     │                               │                   4. Generate Prometheus
+     │                               │                      format text:
+     │                               │                      # HELP allobye_uptime
+     │                               │                      # TYPE allobye_uptime
+     │                               │                      allobye_uptime 3600.0
+     │                               │                      ...
+     │                               │                      allobye_tool_calls_
+     │                               │                      total{tool="..."} 123
+     │                               │                            │
+     │                               │ ◄──────────────────────────│
+     │                               │    (plain text metrics)    │
+     │                               │                            │
+     │  ◄───────────────────────────│                            │
+     │    HTTP 200 text/plain        │                            │
+     │    Content-Type: text/plain   │                            │
+     │                               │                            │
+     │ 5. Parse & store in TSDB      │                            │
+     │                               │                            │
+     ▼                               ▼                            ▼
+
+
+═══════════════════════════════════════════════════════════════════════════════
+5. SCHOOL DASHBOARD FLOW - Real-time Display on Tablet
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│           SCHOOL DASHBOARD INITIAL LOAD + AUTO-REFRESH                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+[School Tablet]        [MCP Server]         [PostgreSQL]      [Supabase Realtime]
+     │                      │                      │                    │
+     │ 1. User opens        │                      │                    │
+     │    dashboard         │                      │                    │
+     │                      │                      │                    │
+     │ 2. Call school-      │                      │                    │
+     │    dashboard-fetch   │                      │                    │
+     │─────────────────►   │                      │                    │
+     │    {schoolId,        │                      │                    │
+     │     timeWindow:      │                      │                    │
+     │     "current"}       │                      │                    │
+     │                      │                      │                    │
+     │              3. Authenticate staff          │                    │
+     │              4. verify_staff_at_school()    │                    │
+     │                      │                      │                    │
+     │              5. get_school_pickups()        │                    │
+     │                      │─────────────────►   │                    │
+     │                      │    SELECT * FROM     │                    │
+     │                      │    pickups WHERE     │                    │
+     │                      │    school_id = ...   │                    │
+     │                      │    AND scheduled_    │                    │
+     │                      │    time BETWEEN      │                    │
+     │                      │    NOW() AND NOW()+  │                    │
+     │                      │    30min             │                    │
+     │                      │    ORDER BY          │                    │
+     │                      │    scheduled_time    │                    │
+     │                      │                      │                    │
+     │                      │ ◄────────────────────│                    │
+     │                      │    [{pickup_1}, ...]│                    │
+     │                      │                      │                    │
+     │              6. get_school_info()           │                    │
+     │                      │─────────────────►   │                    │
+     │                      │                      │                    │
+     │                      │ ◄────────────────────│                    │
+     │                      │    {name, address}  │                    │
+     │                      │                      │                    │
+     │              7. Create widget with data     │                    │
+     │                      │                      │                    │
+     │  ◄──────────────────│                      │                    │
+     │    {pickups: [...],  │                      │                    │
+     │     school_info: {}, │                      │                    │
+     │     refresh_interval:│                      │                    │
+     │     30}              │                      │                    │
+     │                      │                      │                    │
+     │ 8. Widget renders    │                      │                    │
+     │    - PickupCard x N  │                      │                    │
+     │    - Current time    │                      │                    │
+     │    - Filter controls │                      │                    │
+     │                      │                      │                    │
+     │ 9. Setup auto-       │                      │                    │
+     │    refresh (30s)     │                      │                    │
+     │    setInterval() ->  │                      │                    │
+     │    callTool()        │                      │                    │
+     │                      │                      │                    │
+     │ 10. Setup Supabase   │                      │                    │
+     │     Realtime sub     │                      │                    │
+     │─────────────────────────────────────────────────────────────►  │
+     │     .channel("pickups-changes")                                  │
+     │     .on("postgres_changes", {table: "pickups", filter: ...})    │
+     │     .subscribe()                                                 │
+     │                      │                      │                    │
+     │                      │                      │         11. WebSocket
+     │                      │                      │             connection
+     │                      │                      │             established
+     │                      │                      │                    │
+     │ 12. When pickup      │                      │                    │
+     │     updated:         │                      │                    │
+     │  ◄──────────────────────────────────────────────────────────────│
+     │     {eventType: "UPDATE", new: {...}}                           │
+     │                      │                      │                    │
+     │ 13. Update React     │                      │                    │
+     │     state:           │                      │                    │
+     │     setRealtimePickups()                    │                    │
+     │                      │                      │                    │
+     │ 14. UI re-renders    │                      │                    │
+     │     automatically    │                      │                    │
+     │                      │                      │                    │
+     ▼                      ▼                      ▼                    ▼
+
+
+═══════════════════════════════════════════════════════════════════════════════
+6. STATE MANAGEMENT FLOWS
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│              REACT STATE FLOW (useState + useEffect)                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+[Component Mount]          [React Hooks]           [External Store]
+     │                          │                          │
+     │ 1. Dashboard component   │                          │
+     │    initializes           │                          │
+     │                          │                          │
+     │ 2. useState() creates    │                          │
+     │    local state:          │                          │
+     │    - currentTime         │                          │
+     │    - realtimePickups     │                          │
+     │                          │                          │
+     │ 3. useWidgetState()      │                          │
+     │    syncs with OpenAI     │                          │
+     │    global:               │                          │
+     │────────────────────►    │                          │
+     │                          │                          │
+     │                          │ 4. useSyncExternalStore() │
+     │                          │    subscribes to window  │
+     │                          │    .openai events        │
+     │                          │──────────────────────►  │
+     │                          │                          │
+     │                          │                 5. Listen for
+     │                          │                    SET_GLOBALS_
+     │                          │                    EVENT_TYPE
+     │                          │                          │
+     │ 6. useEffect() #1:       │                          │
+     │    Timer for currentTime │                          │
+     │    setInterval(1000ms)   │                          │
+     │────────────────────►    │                          │
+     │                          │                          │
+     │                          │ 7. Every second:         │
+     │                          │    setCurrentTime(new Date())
+     │                          │    -> triggers re-render │
+     │                          │                          │
+     │ 8. useEffect() #2:       │                          │
+     │    Auto-refresh MCP data │                          │
+     │    setInterval(30s)      │                          │
+     │────────────────────►    │                          │
+     │                          │                          │
+     │                          │ 9. Every 30s:            │
+     │                          │    window.openai         │
+     │                          │    .callTool(...)        │
+     │                          │                          │
+     │ 10. useEffect() #3:      │                          │
+     │     Supabase Realtime    │                          │
+     │     subscription         │                          │
+     │────────────────────►    │                          │
+     │                          │                          │
+     │                          │ 11. On WebSocket msg:    │
+     │                          │     setRealtimePickups() │
+     │                          │     -> triggers re-render│
+     │                          │                          │
+     │ 12. Cleanup on unmount   │                          │
+     │     return () => {...}   │                          │
+     │────────────────────►    │                          │
+     │                          │                          │
+     │                          │ 13. Unsubscribe channels │
+     │                          │     clearInterval timers │
+     │                          │                          │
+     ▼                          ▼                          ▼
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│              WIDGET STATE PERSISTENCE FLOW                                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+[React Component]        [useWidgetState Hook]      [OpenAI Global Store]
+     │                          │                            │
+     │ 1. Initialize with       │                            │
+     │    defaultState          │                            │
+     │────────────────────►    │                            │
+     │    {view: "timeline",    │                            │
+     │     filter: "all"}       │                            │
+     │                          │                            │
+     │                          │ 2. Check window.openai     │
+     │                          │    .widgetState            │
+     │                          │───────────────────────►   │
+     │                          │                            │
+     │                          │ ◄──────────────────────────│
+     │                          │    (null or previous state)│
+     │                          │                            │
+     │                          │ 3. useState() with merged  │
+     │                          │    state                   │
+     │                          │                            │
+     │ 4. User changes filter   │                            │
+     │────────────────────►    │                            │
+     │    setState({filter:     │                            │
+     │    "next_30min"})        │                            │
+     │                          │                            │
+     │                          │ 5. setWidgetState()        │
+     │                          │    callback                │
+     │                          │                            │
+     │                          │ 6. Persist to OpenAI store │
+     │                          │───────────────────────►   │
+     │                          │    window.openai           │
+     │                          │    .setWidgetState(...)    │
+     │                          │                            │
+     │                          │                   7. Trigger
+     │                          │                      SET_GLOBALS
+     │                          │                      event
+     │                          │                            │
+     │                          │ 8. Other components get    │
+     │                          │    notified                │
+     │                          │                            │
+     │ 9. On widget reload:     │                            │
+     │    State restored from   │                            │
+     │    OpenAI store          │                            │
+     │  ◄──────────────────────│                            │
+     │                          │                            │
+     ▼                          ▼                            ▼
+
+
+═══════════════════════════════════════════════════════════════════════════════
+END OF DATA FLOW DIAGRAMS
+═══════════════════════════════════════════════════════════════════════════════

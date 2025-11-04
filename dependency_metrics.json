@@ -1,0 +1,461 @@
+{
+  "metadata": {
+    "analysis_date": "2025-11-04",
+    "project": "AllôBye - École Pickup Coordination System",
+    "repository": "/home/user/openai-apps-sdk-examples",
+    "analyzer": "Cartographe de Dépendances v1.0"
+  },
+  "summary": {
+    "total_modules": {
+      "python": 5,
+      "react_jsx": 15,
+      "total": 20
+    },
+    "total_dependencies": {
+      "internal": 18,
+      "external_python": 9,
+      "external_react": 12,
+      "total_external": 21
+    },
+    "circular_dependencies": 0,
+    "max_depth": 3,
+    "max_breadth": 10,
+    "critical_dependencies": 10
+  },
+  "python_backend": {
+    "location": "allobye_server_python/",
+    "modules": {
+      "main.py": {
+        "type": "entry_point",
+        "role": "MCP server orchestrator",
+        "lines_of_code": 1583,
+        "internal_dependencies": [
+          "monitoring",
+          "auth"
+        ],
+        "external_dependencies": [
+          "mcp.types",
+          "fastmcp",
+          "pydantic",
+          "supabase",
+          "uvicorn",
+          "starlette",
+          "dotenv"
+        ],
+        "in_degree": 0,
+        "out_degree": 9,
+        "coupling_score": "high",
+        "criticality": "critical",
+        "notes": "Central orchestrator, handles all MCP tools and HTTP endpoints"
+      },
+      "auth.py": {
+        "type": "module",
+        "role": "Authentication and authorization",
+        "lines_of_code": 633,
+        "internal_dependencies": [],
+        "external_dependencies": [
+          "supabase",
+          "dotenv"
+        ],
+        "in_degree": 1,
+        "out_degree": 2,
+        "coupling_score": "medium",
+        "criticality": "critical",
+        "notes": "Handles user signup, login, session validation, role-based access"
+      },
+      "monitoring.py": {
+        "type": "module",
+        "role": "Observability and metrics collection",
+        "lines_of_code": 754,
+        "internal_dependencies": [],
+        "external_dependencies": [],
+        "stdlib_only": true,
+        "in_degree": 2,
+        "out_degree": 0,
+        "coupling_score": "low",
+        "criticality": "high",
+        "notes": "Highly decoupled, uses only stdlib. Provides structured logging, metrics, tracing, alerts"
+      },
+      "apply_schema.py": {
+        "type": "script",
+        "role": "Database schema migration",
+        "lines_of_code": 360,
+        "internal_dependencies": [],
+        "external_dependencies": [
+          "psycopg2",
+          "dotenv"
+        ],
+        "in_degree": 0,
+        "out_degree": 2,
+        "coupling_score": "none",
+        "criticality": "high",
+        "notes": "Standalone script for database setup and seeding"
+      },
+      "test_monitoring.py": {
+        "type": "test",
+        "role": "Monitoring system test suite",
+        "lines_of_code": 289,
+        "internal_dependencies": [
+          "monitoring"
+        ],
+        "external_dependencies": [],
+        "in_degree": 0,
+        "out_degree": 1,
+        "coupling_score": "low",
+        "criticality": "non-critical",
+        "notes": "Comprehensive test coverage for monitoring features"
+      }
+    },
+    "external_dependencies": {
+      "fastmcp": {
+        "version": ">=0.8.0",
+        "criticality": "critical",
+        "breaking_impact": "complete_system_failure",
+        "usage": "MCP protocol implementation, server framework",
+        "alternatives": "None (protocol-specific)"
+      },
+      "mcp": {
+        "version": ">=1.3.0",
+        "criticality": "critical",
+        "breaking_impact": "complete_system_failure",
+        "usage": "MCP types and interfaces",
+        "alternatives": "None (protocol-specific)"
+      },
+      "uvicorn": {
+        "version": ">=0.32.1",
+        "criticality": "critical",
+        "breaking_impact": "complete_system_failure",
+        "usage": "ASGI HTTP server",
+        "alternatives": "Hypercorn, Daphne"
+      },
+      "starlette": {
+        "version": ">=0.41.3",
+        "criticality": "critical",
+        "breaking_impact": "complete_system_failure",
+        "usage": "ASGI framework for HTTP endpoints",
+        "alternatives": "FastAPI (includes Starlette)"
+      },
+      "pydantic": {
+        "version": ">=2.10.3",
+        "criticality": "critical",
+        "breaking_impact": "input_validation_failure",
+        "usage": "Input schema validation for all tools",
+        "alternatives": "marshmallow, dataclasses (with custom validation)"
+      },
+      "supabase": {
+        "version": ">=2.10.0",
+        "criticality": "critical",
+        "breaking_impact": "data_persistence_failure",
+        "usage": "Database client, authentication",
+        "alternatives": "Direct PostgreSQL with psycopg2 + custom auth"
+      },
+      "psycopg2-binary": {
+        "version": ">=2.9.9",
+        "criticality": "critical",
+        "breaking_impact": "schema_migration_failure",
+        "usage": "PostgreSQL adapter for schema scripts",
+        "alternatives": "psycopg3, asyncpg"
+      },
+      "dotenv": {
+        "version": ">=1.0.0",
+        "criticality": "medium",
+        "breaking_impact": "configuration_failure",
+        "usage": "Environment variable loading",
+        "alternatives": "Manual environment config, os.environ"
+      },
+      "httpx": {
+        "version": ">=0.28.1",
+        "criticality": "medium",
+        "breaking_impact": "http_client_failure",
+        "usage": "HTTP client (for external API calls)",
+        "alternatives": "requests, urllib"
+      }
+    }
+  },
+  "react_frontend": {
+    "allobye_dashboard": {
+      "location": "src/allobye-dashboard/",
+      "components": {
+        "index.jsx": {
+          "type": "entry_point",
+          "role": "App initialization with auth",
+          "lines_of_code": 126,
+          "internal_dependencies": [
+            "dashboard.jsx",
+            "auth-screen.jsx"
+          ],
+          "external_dependencies": [
+            "react",
+            "react-dom/client"
+          ],
+          "in_degree": 0,
+          "out_degree": 4,
+          "criticality": "critical"
+        },
+        "dashboard.jsx": {
+          "type": "component",
+          "role": "Pickup queue display with real-time updates",
+          "lines_of_code": 249,
+          "internal_dependencies": [
+            "../use-openai-global",
+            "../use-widget-state",
+            "pickup-card.jsx",
+            "emergency-alert.jsx"
+          ],
+          "external_dependencies": [
+            "react",
+            "@supabase/supabase-js"
+          ],
+          "in_degree": 1,
+          "out_degree": 6,
+          "criticality": "critical",
+          "notes": "Central component with Supabase real-time subscriptions"
+        },
+        "auth-screen.jsx": {
+          "type": "component",
+          "role": "Authentication UI",
+          "lines_of_code": "~200 (estimated)",
+          "in_degree": 1,
+          "out_degree": 1,
+          "criticality": "critical"
+        },
+        "pickup-card.jsx": {
+          "type": "component",
+          "role": "Pickup display component",
+          "lines_of_code": "~100 (estimated)",
+          "in_degree": 1,
+          "out_degree": 1,
+          "criticality": "high"
+        },
+        "emergency-alert.jsx": {
+          "type": "component",
+          "role": "Emergency alert UI",
+          "lines_of_code": "~80 (estimated)",
+          "in_degree": 1,
+          "out_degree": 1,
+          "criticality": "high"
+        }
+      }
+    },
+    "allobye_monitoring": {
+      "location": "src/allobye-monitoring/",
+      "components": {
+        "index.jsx": {
+          "type": "entry_point",
+          "role": "Monitoring dashboard initialization",
+          "lines_of_code": 12,
+          "internal_dependencies": [
+            "dashboard.jsx"
+          ],
+          "external_dependencies": [
+            "react",
+            "react-dom/client"
+          ],
+          "in_degree": 0,
+          "out_degree": 3,
+          "criticality": "critical"
+        },
+        "dashboard.jsx": {
+          "type": "component",
+          "role": "Observability dashboard with metrics",
+          "lines_of_code": 209,
+          "internal_dependencies": [
+            "tool-usage-chart.jsx",
+            "errors-list.jsx",
+            "metrics-grid.jsx",
+            "alerts-panel.jsx",
+            "system-health.jsx"
+          ],
+          "external_dependencies": [
+            "react"
+          ],
+          "in_degree": 1,
+          "out_degree": 6,
+          "criticality": "high",
+          "notes": "Displays real-time metrics with auto-refresh"
+        },
+        "tool-usage-chart.jsx": {
+          "type": "component",
+          "role": "Bar chart for tool metrics",
+          "lines_of_code": 64,
+          "internal_dependencies": [],
+          "external_dependencies": [
+            "react"
+          ],
+          "in_degree": 1,
+          "out_degree": 1,
+          "criticality": "medium",
+          "notes": "Pure presentation component"
+        },
+        "metrics-grid.jsx": {
+          "type": "component",
+          "role": "Key metrics display grid",
+          "lines_of_code": 48,
+          "internal_dependencies": [],
+          "external_dependencies": [
+            "react"
+          ],
+          "in_degree": 1,
+          "out_degree": 1,
+          "criticality": "medium",
+          "notes": "Pure presentation component"
+        },
+        "errors-list.jsx": {
+          "type": "component",
+          "role": "Recent errors display",
+          "lines_of_code": "~60 (estimated)",
+          "in_degree": 1,
+          "out_degree": 1,
+          "criticality": "medium"
+        },
+        "alerts-panel.jsx": {
+          "type": "component",
+          "role": "Active alerts display",
+          "lines_of_code": "~50 (estimated)",
+          "in_degree": 1,
+          "out_degree": 1,
+          "criticality": "medium"
+        },
+        "system-health.jsx": {
+          "type": "component",
+          "role": "System health status",
+          "lines_of_code": "~60 (estimated)",
+          "in_degree": 1,
+          "out_degree": 1,
+          "criticality": "high"
+        }
+      }
+    },
+    "shared_utilities": {
+      "location": "src/ (assumed)",
+      "components": {
+        "use-openai-global.jsx": {
+          "type": "hook",
+          "role": "MCP tool invocation bridge",
+          "criticality": "critical",
+          "notes": "Critical shared hook for ChatGPT Apps SDK integration",
+          "in_degree": 1,
+          "out_degree": 1
+        },
+        "use-widget-state.jsx": {
+          "type": "hook",
+          "role": "Widget state persistence",
+          "criticality": "medium",
+          "notes": "Persists widget state across sessions",
+          "in_degree": 1,
+          "out_degree": 1
+        }
+      }
+    },
+    "external_dependencies": {
+      "react": {
+        "version": "^19.1.1",
+        "criticality": "critical",
+        "breaking_impact": "complete_ui_failure",
+        "usage": "Core UI framework",
+        "alternatives": "None (framework-specific)"
+      },
+      "react-dom": {
+        "version": "^19.1.1",
+        "criticality": "critical",
+        "breaking_impact": "complete_ui_failure",
+        "usage": "DOM rendering",
+        "alternatives": "None (React-specific)"
+      },
+      "@supabase/supabase-js": {
+        "version": "^2.48.1",
+        "criticality": "critical",
+        "breaking_impact": "realtime_updates_failure",
+        "usage": "Real-time database subscriptions",
+        "alternatives": "WebSocket + custom real-time logic"
+      },
+      "@types/react": {
+        "version": "^19.1.12",
+        "criticality": "low",
+        "breaking_impact": "type_checking_only",
+        "usage": "TypeScript type definitions",
+        "alternatives": "None (type checking only)"
+      },
+      "vite": {
+        "version": "^7.1.1",
+        "criticality": "critical",
+        "breaking_impact": "build_failure",
+        "usage": "Build tool and dev server",
+        "alternatives": "webpack, esbuild, rollup"
+      }
+    }
+  },
+  "dependency_graph_metrics": {
+    "cohesion": {
+      "python_backend": "high",
+      "react_dashboard": "high",
+      "react_monitoring": "high",
+      "description": "Modules are well-organized with clear responsibilities"
+    },
+    "coupling": {
+      "strong_coupling_pairs": [
+        {
+          "modules": [
+            "main.py",
+            "monitoring.py"
+          ],
+          "reason": "Tight integration for observability"
+        },
+        {
+          "modules": [
+            "main.py",
+            "auth.py"
+          ],
+          "reason": "Tight integration for security"
+        },
+        {
+          "modules": [
+            "dashboard.jsx",
+            "use-openai-global"
+          ],
+          "reason": "Critical MCP communication dependency"
+        }
+      ],
+      "weak_coupling_modules": [
+        "monitoring.py",
+        "tool-usage-chart.jsx",
+        "metrics-grid.jsx",
+        "pickup-card.jsx",
+        "emergency-alert.jsx"
+      ]
+    },
+    "modularity_score": 8.5,
+    "maintainability_score": 9.0,
+    "testability_score": 8.0,
+    "notes": {
+      "strengths": [
+        "No circular dependencies detected",
+        "Clear separation of concerns",
+        "monitoring.py is highly decoupled (stdlib only)",
+        "Pure presentation components are easy to test",
+        "Well-defined module boundaries"
+      ],
+      "potential_improvements": [
+        "Consider extracting database operations from main.py to a dedicated DAL module",
+        "Add integration tests for real-time subscriptions",
+        "Document shared hooks (use-openai-global, use-widget-state) more explicitly"
+      ],
+      "risks": [
+        "Strong coupling between main.py and external MCP libraries",
+        "Supabase dependency is critical for both backend and frontend",
+        "Breaking changes in React 19 could impact all components"
+      ]
+    }
+  },
+  "unused_dependencies": {
+    "potentially_unused": [
+      {
+        "package": "httpx",
+        "reason": "Not explicitly imported in analyzed files",
+        "recommendation": "Verify if used for HTTP clients or external API calls"
+      }
+    ],
+    "verification_needed": true,
+    "notes": "Full codebase scan recommended to confirm unused dependencies"
+  }
+}
